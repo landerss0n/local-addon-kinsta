@@ -8,7 +8,8 @@ A Local by WP Engine addon that enables seamless synchronization between your lo
 - **Push to Kinsta** - Upload files and database from Local to your Kinsta site
 - **Smart Search-Replace** - Automatically handles URL replacements with proper serialized data support
 - **Secure API Storage** - API keys are encrypted using Electron's safeStorage
-- **Environment Support** - Works with both Live and Staging environments
+- **Environment Support** - Works with both Production and Staging environments
+- **Site Search** - Quickly find sites with search (useful for accounts with 100+ sites)
 
 ## Installation
 
@@ -27,29 +28,34 @@ A Local by WP Engine addon that enables seamless synchronization between your lo
 
 ## Configuration
 
-1. Open Local and go to **Preferences > Kinsta**
+1. Click the **Kinsta** button on any site in Local
 2. Enter your Kinsta API key (create one at [MyKinsta](https://my.kinsta.com/account/api-keys))
-3. Enter your Company ID
-4. Click **Connect to Kinsta**
+3. Enter your Company ID (found in MyKinsta → Company → Company Details)
+4. Click **Connect**
 
 ## Usage
 
 ### Linking a Site
 
-1. Open a site in Local that you want to link to Kinsta
-2. In the site overview, find the "Link to Kinsta" panel
-3. Select your Kinsta site and environment (Live/Staging)
+1. Open a site in Local
+2. Click the **Kinsta** button in the toolbar
+3. Search and select your Kinsta site from the list
 4. Click **Link Site**
 
 ### Syncing
 
-Once linked, a **Kinsta** button appears in the site toolbar (next to WP Admin / Open Site):
+Once linked, click the **Kinsta** dropdown button to:
 
-- **Pull** - Downloads files and optionally database from Kinsta to Local
-- **Push** - Uploads files and optionally database from Local to Kinsta
-- Options:
-  - **Database** - Include database in sync (with automatic search-replace)
-  - **Uploads** - Include wp-content/uploads folder
+- **Pull from Kinsta** - Downloads from Kinsta to Local
+- **Push to Kinsta** - Uploads from Local to Kinsta
+- **Unlink Site** - Remove the connection
+
+Sync options:
+- **Include database** - Sync database with automatic search-replace
+- **Include uploads folder** - Sync wp-content/uploads
+
+Environment selection:
+- Choose **Production** or **Staging** for each sync operation
 
 ## Requirements
 
@@ -70,7 +76,7 @@ The following files/folders are excluded from sync:
 
 - API keys are stored encrypted using Electron's safeStorage API
 - SSH connections use your existing SSH keys
-- Push to production requires confirmation
+- Push to Production requires confirmation dialog
 
 ## Development
 
@@ -90,6 +96,11 @@ npm run build
 # Watch mode for renderer
 npm run watch
 ```
+
+## Documentation
+
+- [Local Components Library](https://getflywheel.github.io/local-components/?path=/docs/alerts-alert--docs)
+- [Local Addon Development](https://build.localwp.com/)
 
 ## License
 

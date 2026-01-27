@@ -1,0 +1,575 @@
+import * as React from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import {
+  PrimaryButton,
+  TextButton,
+  Spinner,
+  Title,
+  InputSearch,
+} from '@getflywheel/local-components';
+
+const { ipcRenderer } = window.require('electron');
+
+// Kinsta icon - dark background version (for dark theme)
+const KinstaIconDark = ({ size = 40 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <g clipPath="url(#clip0_dark)">
+      <path d="M0 24C0 10.7452 10.7452 0 24 0H96C109.254 0 120 10.7452 120 24V96C120 109.254 109.254 120 96 120H24C10.7452 120 0 109.254 0 96V24Z" fill="#181516"/>
+      <mask id="mask0_dark" style={{ maskType: 'luminance' }} maskUnits="userSpaceOnUse" x="4" y="26" width="45" height="68">
+        <path d="M38.3632 26.0246C44.0636 26.0246 48.6843 30.6453 48.6843 36.3456V83.6548C48.6843 89.3551 44.0636 93.9755 38.3632 93.9755C27.2161 93.9755 16.069 93.9755 4.92188 93.9755V26.0252C16.069 26.0237 27.2161 26.0246 38.3632 26.0246Z" fill="white"/>
+      </mask>
+      <g mask="url(#mask0_dark)">
+        <g filter="url(#filter0_dark)">
+          <path d="M30.4688 9.84363H147.721V110.279H30.4688V9.84363Z" fill="url(#paint0_dark)"/>
+        </g>
+      </g>
+      <mask id="mask1_dark" style={{ maskType: 'luminance' }} maskUnits="userSpaceOnUse" x="48" y="26" width="48" height="68">
+        <path d="M85.3079 26.0252C91.0083 26.0252 95.629 30.646 95.629 36.3463V83.6554C95.629 89.3557 91.0083 93.9762 85.3079 93.9762L48.8301 93.9844L48.8301 26.0156L85.3079 26.0252Z" fill="white"/>
+      </mask>
+      <g mask="url(#mask1_dark)">
+        <g filter="url(#filter1_dark)">
+          <path d="M60 9.84375H177.252V110.279H60V9.84375Z" fill="url(#paint1_dark)"/>
+        </g>
+      </g>
+    </g>
+    <defs>
+      <filter id="filter0_dark" x="-69.5312" y="-90.1564" width="317.252" height="300.435" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+        <feFlood floodOpacity="0" result="BackgroundImageFix"/>
+        <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+        <feGaussianBlur stdDeviation="4.6875" result="effect1_foregroundBlur"/>
+      </filter>
+      <filter id="filter1_dark" x="-40" y="-90.1562" width="317.252" height="300.435" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+        <feFlood floodOpacity="0" result="BackgroundImageFix"/>
+        <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+        <feGaussianBlur stdDeviation="4.6875" result="effect1_foregroundBlur"/>
+      </filter>
+      <linearGradient id="paint0_dark" x1="26.8484" y1="69.0531" x2="106.313" y2="43.7697" gradientUnits="userSpaceOnUse">
+        <stop offset="0.182692" stopColor="#FE5A00"/>
+        <stop offset="0.598914" stopColor="#FF0000"/>
+      </linearGradient>
+      <linearGradient id="paint1_dark" x1="56.3797" y1="69.0532" x2="135.844" y2="43.7698" gradientUnits="userSpaceOnUse">
+        <stop offset="0.211538" stopColor="#FE5A00"/>
+        <stop offset="0.634615" stopColor="#FF0000"/>
+      </linearGradient>
+      <clipPath id="clip0_dark">
+        <rect width="120" height="120" fill="white"/>
+      </clipPath>
+    </defs>
+  </svg>
+);
+
+// Kinsta icon - light background version (for light theme)
+const KinstaIconLight = ({ size = 40 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <g clipPath="url(#clip0_light)">
+      <path d="M0 24C0 10.7452 10.7452 0 24 0H96C109.254 0 120 10.7452 120 24V96C120 109.254 109.254 120 96 120H24C10.7452 120 0 109.254 0 96V24Z" fill="#F9F5F3"/>
+      <mask id="mask0_light" style={{ maskType: 'luminance' }} maskUnits="userSpaceOnUse" x="4" y="26" width="45" height="68">
+        <path d="M38.3632 26.0246C44.0636 26.0246 48.6843 30.6453 48.6843 36.3456V83.6548C48.6843 89.3551 44.0636 93.9755 38.3632 93.9755C27.2161 93.9755 16.069 93.9755 4.92188 93.9755V26.0252C16.069 26.0237 27.2161 26.0246 38.3632 26.0246Z" fill="white"/>
+      </mask>
+      <g mask="url(#mask0_light)">
+        <g filter="url(#filter0_light)">
+          <path d="M30.4688 9.84363H147.721V110.279H30.4688V9.84363Z" fill="url(#paint0_light)"/>
+        </g>
+      </g>
+      <mask id="mask1_light" style={{ maskType: 'luminance' }} maskUnits="userSpaceOnUse" x="48" y="26" width="48" height="68">
+        <path d="M85.3079 26.0252C91.0083 26.0252 95.629 30.646 95.629 36.3463V83.6554C95.629 89.3557 91.0083 93.9762 85.3079 93.9762L48.8301 93.9844L48.8301 26.0156L85.3079 26.0252Z" fill="white"/>
+      </mask>
+      <g mask="url(#mask1_light)">
+        <g filter="url(#filter1_light)">
+          <path d="M60 9.84375H177.252V110.279H60V9.84375Z" fill="url(#paint1_light)"/>
+        </g>
+      </g>
+    </g>
+    <defs>
+      <filter id="filter0_light" x="-69.5312" y="-90.1564" width="317.252" height="300.435" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+        <feFlood floodOpacity="0" result="BackgroundImageFix"/>
+        <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+        <feGaussianBlur stdDeviation="4.6875" result="effect1_foregroundBlur"/>
+      </filter>
+      <filter id="filter1_light" x="-40" y="-90.1562" width="317.252" height="300.435" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+        <feFlood floodOpacity="0" result="BackgroundImageFix"/>
+        <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+        <feGaussianBlur stdDeviation="4.6875" result="effect1_foregroundBlur"/>
+      </filter>
+      <linearGradient id="paint0_light" x1="26.8484" y1="69.0531" x2="106.313" y2="43.7697" gradientUnits="userSpaceOnUse">
+        <stop offset="0.182692" stopColor="#FE5A00"/>
+        <stop offset="0.598914" stopColor="#FF0000"/>
+      </linearGradient>
+      <linearGradient id="paint1_light" x1="56.3797" y1="69.0532" x2="135.844" y2="43.7698" gradientUnits="userSpaceOnUse">
+        <stop offset="0.211538" stopColor="#FE5A00"/>
+        <stop offset="0.634615" stopColor="#FF0000"/>
+      </linearGradient>
+      <clipPath id="clip0_light">
+        <rect width="120" height="120" fill="white"/>
+      </clipPath>
+    </defs>
+  </svg>
+);
+
+// Theme-aware icon component
+const KinstaIcon = ({ size = 40 }: { size?: number }) => {
+  // Check if dark mode by looking at body background or a known class
+  const isDarkMode = typeof document !== 'undefined' &&
+    (document.body.classList.contains('theme-dark') ||
+     getComputedStyle(document.body).backgroundColor.includes('rgb(') &&
+     parseInt(getComputedStyle(document.body).backgroundColor.split(',')[0].replace(/\D/g, '')) < 128);
+
+  // Dark theme = Light icon (beige/cream background), Light theme = Dark icon (black background)
+  return isDarkMode !== false ? <KinstaIconLight size={size} /> : <KinstaIconDark size={size} />;
+};
+
+interface SiteLink {
+  localSiteId: string;
+  kinstaSiteId: string;
+  kinstaSiteName: string;
+  kinstaSiteSlug?: string;
+}
+
+interface KinstaSite {
+  id: string;
+  name: string;
+  display_name: string;
+}
+
+interface Props {
+  isOpen: boolean;
+  onClose: () => void;
+  onLinkComplete: (link: SiteLink) => void;
+  site: any;
+  isConnected: boolean;
+}
+
+const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, site, isConnected }) => {
+  const [apiKey, setApiKey] = useState('');
+  const [companyId, setCompanyId] = useState('');
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connected, setConnected] = useState(isConnected);
+  const [kinstaSites, setKinstaSites] = useState<KinstaSite[]>([]);
+  const [selectedSiteId, setSelectedSiteId] = useState<string>('');
+  const [isLinking, setIsLinking] = useState(false);
+  const [isLoadingSites, setIsLoadingSites] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Sync connected state with prop
+  useEffect(() => {
+    setConnected(isConnected);
+  }, [isConnected]);
+
+  // Load sites when drawer opens and connected
+  useEffect(() => {
+    if (isOpen && connected) {
+      loadKinstaSites();
+    }
+  }, [isOpen, connected]);
+
+  // Reset search when drawer closes
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchQuery('');
+    }
+  }, [isOpen]);
+
+  const loadKinstaSites = async () => {
+    setIsLoadingSites(true);
+    setError(null);
+    const result = await ipcRenderer.invoke('kinsta:getSites');
+    if (result.success) {
+      setKinstaSites(result.sites);
+    } else {
+      setError(result.error);
+    }
+    setIsLoadingSites(false);
+  };
+
+  // Filter and sort sites
+  const filteredSites = useMemo(() => {
+    let sites = [...kinstaSites];
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      sites = sites.filter(s =>
+        (s.display_name || s.name).toLowerCase().includes(query) ||
+        s.name.toLowerCase().includes(query)
+      );
+    }
+
+    // Sort alphabetically by display name
+    sites.sort((a, b) => {
+      const nameA = (a.display_name || a.name).toLowerCase();
+      const nameB = (b.display_name || b.name).toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+
+    return sites;
+  }, [kinstaSites, searchQuery]);
+
+  const handleConnect = async () => {
+    if (!apiKey || !companyId) {
+      setError('Please enter both API Key and Company ID');
+      return;
+    }
+
+    setIsConnecting(true);
+    setError(null);
+
+    const result = await ipcRenderer.invoke('kinsta:testConnection', apiKey, companyId);
+    if (result.success) {
+      setConnected(true);
+      loadKinstaSites();
+    } else {
+      setError(result.error || 'Could not connect to Kinsta');
+    }
+    setIsConnecting(false);
+  };
+
+  const handleLink = async () => {
+    if (!selectedSiteId) {
+      setError('Please select a Kinsta site');
+      return;
+    }
+
+    setIsLinking(true);
+    setError(null);
+
+    const kinstaSite = kinstaSites.find(s => s.id === selectedSiteId);
+    const result = await ipcRenderer.invoke('kinsta:linkSite', site.id, kinstaSite);
+
+    if (result.success) {
+      onLinkComplete(result.link);
+    } else {
+      setError(result.error);
+    }
+    setIsLinking(false);
+  };
+
+  // Drawer styles
+  const overlayStyle: React.CSSProperties = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 9998,
+    opacity: isOpen ? 1 : 0,
+    visibility: isOpen ? 'visible' : 'hidden',
+    transition: 'opacity 0.3s ease, visibility 0.3s ease',
+  };
+
+  const drawerStyle: React.CSSProperties = {
+    position: 'fixed',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: '420px',
+    backgroundColor: '#292929',
+    zIndex: 9999,
+    transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
+    transition: 'transform 0.3s ease',
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '-4px 0 20px rgba(0, 0, 0, 0.3)',
+  };
+
+  const headerStyle: React.CSSProperties = {
+    padding: '20px 24px',
+    borderBottom: '1px solid #3e3e3e',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  };
+
+  const contentStyle: React.CSSProperties = {
+    flex: 1,
+    padding: '24px',
+    overflowY: 'auto',
+  };
+
+  const footerStyle: React.CSSProperties = {
+    padding: '20px 24px',
+    borderTop: '1px solid #3e3e3e',
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '12px 16px',
+    backgroundColor: '#1e1e1e',
+    border: '1px solid #3e3e3e',
+    borderRadius: '4px',
+    color: '#fff',
+    fontSize: '14px',
+    outline: 'none',
+    marginBottom: '16px',
+    boxSizing: 'border-box',
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    marginBottom: '8px',
+    fontSize: '13px',
+    fontWeight: 500,
+  };
+
+  return (
+    <>
+      <div style={overlayStyle} onClick={onClose} />
+
+      <div style={drawerStyle}>
+        {/* Header */}
+        <div style={headerStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <KinstaIcon size={28} />
+            <Title size="s" style={{ margin: 0 }}>
+              {connected ? 'Link to Kinsta' : 'Connect to Kinsta'}
+            </Title>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '8px',
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={contentStyle}>
+          {!connected ? (
+            <>
+              {/* Connect Form */}
+              <p style={{ color: '#888', fontSize: '14px', marginBottom: '24px', lineHeight: 1.5 }}>
+                Enter your Kinsta API credentials to connect. You can create an API key in your{' '}
+                <a
+                  href="https://my.kinsta.com/account/api-keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#51cf66' }}
+                >
+                  MyKinsta dashboard
+                </a>.
+              </p>
+
+              <div>
+                <label style={labelStyle}>API Key</label>
+                <input
+                  type="password"
+                  style={inputStyle}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Enter your Kinsta API key"
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Company ID</label>
+                <input
+                  type="text"
+                  style={inputStyle}
+                  value={companyId}
+                  onChange={(e) => setCompanyId(e.target.value)}
+                  placeholder="e.g. abc123def456"
+                />
+                <p style={{ color: '#666', fontSize: '12px', marginTop: '-8px' }}>
+                  Find this in MyKinsta → Company → Company Details
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Link Form */}
+              <p style={{ color: '#888', fontSize: '14px', marginBottom: '16px', lineHeight: 1.5 }}>
+                Select the Kinsta site to link with <strong style={{ color: '#fff' }}>{site.name}</strong>.
+              </p>
+
+              <div>
+                {isLoadingSites ? (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '16px',
+                    backgroundColor: '#1e1e1e',
+                    border: '1px solid #3e3e3e',
+                    borderRadius: '4px',
+                  }}>
+                    <Spinner />
+                    <span style={{ color: '#888' }}>Loading Kinsta sites...</span>
+                  </div>
+                ) : kinstaSites.length === 0 ? (
+                  <div style={{
+                    padding: '16px',
+                    backgroundColor: '#1e1e1e',
+                    border: '1px solid #3e3e3e',
+                    borderRadius: '4px',
+                    color: '#888',
+                  }}>
+                    No sites found. Make sure your API key has access to sites.
+                  </div>
+                ) : (
+                  <>
+                    {/* Search input */}
+                    <div style={{ marginBottom: '12px' }}>
+                      <InputSearch
+                        value={searchQuery}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+                        placeholder={`Search ${kinstaSites.length} sites...`}
+                      />
+                    </div>
+
+                    {/* Sites count */}
+                    <div style={{
+                      fontSize: '12px',
+                      color: '#666',
+                      marginBottom: '8px',
+                      paddingLeft: '2px',
+                    }}>
+                      {filteredSites.length === kinstaSites.length
+                        ? `${kinstaSites.length} sites`
+                        : `${filteredSites.length} of ${kinstaSites.length} sites`}
+                    </div>
+
+                    {/* Sites list */}
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '6px',
+                      maxHeight: '400px',
+                      overflowY: 'auto',
+                    }}>
+                      {filteredSites.length === 0 ? (
+                        <div style={{
+                          padding: '24px 16px',
+                          textAlign: 'center',
+                          color: '#666',
+                          fontSize: '14px',
+                        }}>
+                          No sites match "{searchQuery}"
+                        </div>
+                      ) : (
+                        filteredSites.map((kSite) => (
+                          <button
+                            key={kSite.id}
+                            onClick={() => setSelectedSiteId(kSite.id)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              padding: '10px 12px',
+                              backgroundColor: selectedSiteId === kSite.id ? 'rgba(81, 207, 102, 0.15)' : '#1e1e1e',
+                              border: selectedSiteId === kSite.id ? '2px solid #51cf66' : '1px solid #3e3e3e',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              width: '100%',
+                              transition: 'all 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (selectedSiteId !== kSite.id) {
+                                e.currentTarget.style.backgroundColor = '#252525';
+                                e.currentTarget.style.borderColor = '#4e4e4e';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (selectedSiteId !== kSite.id) {
+                                e.currentTarget.style.backgroundColor = '#1e1e1e';
+                                e.currentTarget.style.borderColor = '#3e3e3e';
+                              }
+                            }}
+                          >
+                            <div style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '6px',
+                              overflow: 'hidden',
+                              flexShrink: 0,
+                            }}>
+                              <KinstaIcon size={36} />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{
+                                color: selectedSiteId === kSite.id ? '#fff' : '#ccc',
+                                fontSize: '14px',
+                                fontWeight: 500,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}>
+                                {kSite.display_name || kSite.name}
+                              </div>
+                              <div style={{
+                                color: '#666',
+                                fontSize: '12px',
+                                marginTop: '1px',
+                              }}>
+                                {kSite.name}
+                              </div>
+                            </div>
+                            {selectedSiteId === kSite.id && (
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#51cf66" strokeWidth="2.5">
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                            )}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+
+          {error && (
+            <div style={{
+              marginTop: '16px',
+              padding: '12px 16px',
+              backgroundColor: 'rgba(208, 77, 92, 0.1)',
+              border: '1px solid rgba(208, 77, 92, 0.3)',
+              borderRadius: '8px',
+              color: '#d04d5c',
+              fontSize: '13px',
+            }}>
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={footerStyle}>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <TextButton onClick={onClose} style={{ flex: 1 }}>
+              Cancel
+            </TextButton>
+            {!connected ? (
+              <PrimaryButton
+                onClick={handleConnect}
+                disabled={isConnecting || !apiKey || !companyId}
+                style={{ flex: 1 }}
+              >
+                {isConnecting ? 'Connecting...' : 'Connect'}
+              </PrimaryButton>
+            ) : (
+              <PrimaryButton
+                onClick={handleLink}
+                disabled={isLinking || !selectedSiteId || isLoadingSites}
+                style={{ flex: 1 }}
+              >
+                {isLinking ? 'Linking...' : 'Link Site'}
+              </PrimaryButton>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
+export default KinstaLinkDrawer;
