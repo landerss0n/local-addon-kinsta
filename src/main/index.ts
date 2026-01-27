@@ -100,27 +100,31 @@ function getApiKey(): string | null {
     if (safeStorage && safeStorage.isEncryptionAvailable()) {
       return safeStorage.decryptString(encryptedData);
     }
-    // Fallback: read as base64 if safeStorage not available
-    return Buffer.from(encryptedData.toString(), 'base64').toString('utf8');
+    // Security: Don't read unencrypted keys
+    console.error('Cannot read API key: encryption not available');
+    return null;
   } catch (e) {
     return null;
   }
 }
 
-function saveApiKey(apiKey: string): void {
+function saveApiKey(apiKey: string): boolean {
   ensureConfigDir();
   try {
     if (safeStorage && safeStorage.isEncryptionAvailable()) {
       const encrypted = safeStorage.encryptString(apiKey);
       fs.writeFileSync(KEY_FILE, encrypted);
+      // Set restrictive permissions
+      fs.chmodSync(KEY_FILE, 0o600);
+      return true;
     } else {
-      // Fallback: save as base64 (not ideal, but better than plaintext)
-      fs.writeFileSync(KEY_FILE, Buffer.from(apiKey).toString('base64'));
+      // Security: Refuse to save if encryption is not available
+      console.error('Cannot save API key: encryption not available');
+      return false;
     }
-    // Set restrictive permissions
-    fs.chmodSync(KEY_FILE, 0o600);
   } catch (e) {
     console.error('Failed to save API key:', e);
+    return false;
   }
 }
 
@@ -149,6 +153,60 @@ function saveSiteLinks(links: Record<string, SiteLink>): void {
   fs.writeFileSync(SITES_FILE, JSON.stringify(links, null, 2));
 }
 
+// Security: Validate SSH/shell values to prevent command injection
+function isValidHostname(host: string): boolean {
+  // Allow IP addresses and hostnames
+  const hostnameRegex = /^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$/;
+  const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+  return hostnameRegex.test(host) || ipRegex.test(host);
+}
+
+function isValidPort(port: string): boolean {
+  const portNum = parseInt(port, 10);
+  return !isNaN(portNum) && portNum > 0 && portNum <= 65535;
+}
+
+function isValidUsername(user: string): boolean {
+  // SSH usernames: alphanumeric, underscores, hyphens
+  return /^[a-zA-Z0-9_-]+$/.test(user);
+}
+
+function isValidDomain(domain: string): boolean {
+  // Domain names: alphanumeric, dots, hyphens
+  return /^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$/.test(domain);
+}
+
+function validateSiteLink(link: SiteLink): boolean {
+  return (
+    isValidHostname(link.sshHost) &&
+    isValidPort(link.sshPort) &&
+    isValidUsername(link.sshUser) &&
+    isValidDomain(link.remoteDomain)
+  );
+}
+
+// Security: Clean up old temp files on startup
+function cleanupTempFiles(): void {
+  if (!fs.existsSync(TEMP_DIR)) return;
+
+  try {
+    const files = fs.readdirSync(TEMP_DIR);
+    for (const file of files) {
+      if (file.endsWith('.sql')) {
+        const filePath = path.join(TEMP_DIR, file);
+        try {
+          fs.unlinkSync(filePath);
+          console.log(`[Kinsta] Cleaned up temp file: ${file}`);
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
+    }
+  } catch (e) {
+    // Ignore errors
+  }
+}
+
 // Kinsta API client
 function getKinstaClient(apiKey: string): AxiosInstance {
   return axios.create({
@@ -167,6 +225,9 @@ export default function (context: AddonMainContext): void {
   // Initialize safeStorage for secure API key storage
   safeStorage = electron.safeStorage;
 
+  // Security: Clean up any leftover temp files from previous sessions
+  cleanupTempFiles();
+
   // Test API connection
   ipcMain.handle('kinsta:testConnection', async (_event: IpcMainInvokeEvent, apiKey: string, companyId: string) => {
     try {
@@ -175,7 +236,10 @@ export default function (context: AddonMainContext): void {
 
       if (response.data.company) {
         // Save credentials securely
-        saveApiKey(apiKey);
+        const saved = saveApiKey(apiKey);
+        if (!saved) {
+          return { success: false, error: 'Could not save API key securely. Encryption not available.' };
+        }
         saveConfig({ companyId });
         return { success: true, company: response.data.company };
       }
@@ -270,13 +334,18 @@ export default function (context: AddonMainContext): void {
       return { success: false, error: 'Site not linked to Kinsta' };
     }
 
+    // Security: Validate site link data before using in shell commands
+    if (!validateSiteLink(link)) {
+      return { success: false, error: 'Invalid site link configuration. Please unlink and relink the site.' };
+    }
+
     const sendProgress = (progress: SyncProgress) => {
       event.sender.send('kinsta:syncProgress', progress);
     };
 
     try {
       const localPublicPath = path.join(site.path, 'app', 'public');
-      const sshCmd = `ssh -p ${link.sshPort} -o StrictHostKeyChecking=no`;
+      const sshCmd = `ssh -p ${link.sshPort} -o StrictHostKeyChecking=accept-new`;
       const remotePath = `${link.sshUser}@${link.sshHost}:~/public`;
 
       // Build exclude args
@@ -306,7 +375,7 @@ export default function (context: AddonMainContext): void {
         execSync(`${sshCmd} ${link.sshUser}@${link.sshHost} "cd ~/public && wp db export ${remoteDbPath}"`, { encoding: 'utf8', stdio: 'pipe' });
 
         // Download
-        execSync(`scp -P ${link.sshPort} -o StrictHostKeyChecking=no ${link.sshUser}@${link.sshHost}:${remoteDbPath} "${dbDumpPath}"`, { encoding: 'utf8', stdio: 'pipe' });
+        execSync(`scp -P ${link.sshPort} -o StrictHostKeyChecking=accept-new ${link.sshUser}@${link.sshHost}:${remoteDbPath} "${dbDumpPath}"`, { encoding: 'utf8', stdio: 'pipe' });
 
         sendProgress({ stage: 'database', progress: 75, message: 'Importing database locally...' });
 
@@ -425,13 +494,18 @@ export default function (context: AddonMainContext): void {
       return { success: false, error: 'Site not linked to Kinsta' };
     }
 
+    // Security: Validate site link data before using in shell commands
+    if (!validateSiteLink(link)) {
+      return { success: false, error: 'Invalid site link configuration. Please unlink and relink the site.' };
+    }
+
     const sendProgress = (progress: SyncProgress) => {
       event.sender.send('kinsta:syncProgress', progress);
     };
 
     try {
       const localPublicPath = path.join(site.path, 'app', 'public');
-      const sshCmd = `ssh -p ${link.sshPort} -o StrictHostKeyChecking=no`;
+      const sshCmd = `ssh -p ${link.sshPort} -o StrictHostKeyChecking=accept-new`;
       const remotePath = `${link.sshUser}@${link.sshHost}:~/public`;
 
       // Build exclude args
@@ -478,7 +552,7 @@ export default function (context: AddonMainContext): void {
         sendProgress({ stage: 'database', progress: 75, message: 'Importing database on Kinsta...' });
 
         // Upload and import
-        execSync(`scp -P ${link.sshPort} -o StrictHostKeyChecking=no "${dbDumpPath}" ${link.sshUser}@${link.sshHost}:${remoteDbPath}`, { encoding: 'utf8', stdio: 'pipe' });
+        execSync(`scp -P ${link.sshPort} -o StrictHostKeyChecking=accept-new "${dbDumpPath}" ${link.sshUser}@${link.sshHost}:${remoteDbPath}`, { encoding: 'utf8', stdio: 'pipe' });
         execSync(`${sshCmd} ${link.sshUser}@${link.sshHost} "cd ~/public && wp db import ${remoteDbPath}"`, { encoding: 'utf8', stdio: 'pipe' });
 
         sendProgress({ stage: 'search-replace', progress: 85, message: 'Running search-replace...' });
