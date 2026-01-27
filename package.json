@@ -1,0 +1,39 @@
+{
+  "name": "local-addon-kinsta",
+  "productName": "Kinsta Sync",
+  "version": "1.0.0",
+  "description": "Sync WordPress sites between Local and Kinsta hosting",
+  "author": "Lucas",
+  "license": "MIT",
+  "main": "lib/main/index.js",
+  "renderer": "lib/renderer/index.js",
+  "scripts": {
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "tsc",
+    "build:renderer": "webpack --config webpack.config.js",
+    "watch": "npm run watch:main & npm run watch:renderer",
+    "watch:main": "tsc --watch",
+    "watch:renderer": "webpack --watch --config webpack.config.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@getflywheel/local": "^9.2.9",
+    "@getflywheel/local-components": "^17.8.1",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "css-loader": "^6.8.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "style-loader": "^3.3.0",
+    "ts-loader": "^9.5.0",
+    "typescript": "^5.3.0",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.0"
+  },
+  "localAddonSettings": {
+    "siteMenu": true
+  }
+}
