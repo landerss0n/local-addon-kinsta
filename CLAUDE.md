@@ -30,8 +30,12 @@ This is a Local by WP Engine addon that provides Kinsta hosting integration. It 
 Config stored in `~/.kinsta-sync/`:
 - `config.json` - Company ID
 - `.api-key.enc` - Encrypted API key
-- `sites.json` - Site links (Local site ID -> Kinsta environment)
+- `sites.json` - Site links (Local site ID -> Kinsta site, not environment)
 - `tmp/` - Temporary SQL dumps
+
+## Site Linking
+
+Sites are linked at the Kinsta site level (not environment level). When syncing, users select the target environment (staging or live) from a dropdown. This allows syncing to different environments without relinking.
 
 ## Sync Process
 

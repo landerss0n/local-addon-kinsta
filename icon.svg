@@ -1,12 +1,5 @@
-<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="kinstaGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#5333ed;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#7c3aed;stop-opacity:1" />
-    </linearGradient>
-  </defs>
-  <circle cx="64" cy="64" r="60" fill="url(#kinstaGradient)"/>
-  <circle cx="64" cy="64" r="45" fill="none" stroke="white" stroke-width="6"/>
-  <circle cx="64" cy="64" r="25" fill="none" stroke="white" stroke-width="6"/>
-  <circle cx="64" cy="64" r="8" fill="white"/>
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="128" height="128" rx="16" fill="#5333ed"/>
+  <circle cx="64" cy="64" r="32" stroke="white" stroke-width="6" fill="none"/>
+  <circle cx="64" cy="64" r="10" fill="white"/>
 </svg>
