@@ -5,6 +5,7 @@ import { Route } from 'react-router-dom';
 import { AddonRendererContext, AddonSettingsItem } from '@getflywheel/local/renderer';
 import { KinstaDrawerHost } from './KinstaSitePanel';
 import KinstaPage from './KinstaPage';
+import KinstaStatusBadge from './KinstaStatusBadge';
 import KinstaSettings from './KinstaSettings';
 
 export default function (context: AddonRendererContext): void {
@@ -29,6 +30,18 @@ export default function (context: AddonRendererContext): void {
             siteStatus={routeChildrenProps.siteStatus}
           />
         )}
+      />
+    );
+  });
+
+  // Status badge in the site view's top-right corner: link status at a
+  // glance + live sync progress even when the drawer is closed.
+  hooks.addContent('SiteInfo_Top_TopRight', (site: any) => {
+    return (
+      <KinstaStatusBadge
+        key="kinsta-status-badge"
+        site={site}
+        onOpen={() => events.send('goToRoute', `/main/site-info/${site.id}/kinsta`)}
       />
     );
   });

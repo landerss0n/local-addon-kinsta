@@ -28,6 +28,8 @@ Both modules `export default function (context) {...}` — Local passes a `conte
 - Real rsync progress via `--info=progress2` parsing; `mysqldump`/`mysql` stream via stdout/stdin file pipes
 - **Cancellable syncs**: one `ActiveSync` per site in `activeSyncs`; `kinsta:cancelSync` kills the current child; every step rejects with `CancelledError` after cancellation
 - **Safety backups before destructive steps**: pull backs up local DB to tmp (`<siteId>-pre-pull-backup.sql`), push exports remote DB to `~/kinsta-sync-pre-push-backup.sql` (home dir, outside `~/public`)
+- **Native Kinsta backup before push** (checkbox, default on): `POST /sites/environments/{env_id}/manual-backups {tag: 'kinsta-sync-pre-push'}` → poll `GET /operations/{id}` (200 done / 202 in progress / 500 failed). Max 5 manual slots per environment — `createKinstaBackup` frees a slot by deleting the oldest backup tagged `kinsta-sync` (never the user's own); if all 5 are the user's, the Kinsta backup is skipped with a notify. If enabled and creation fails, the push is ABORTED.
+- **Automatic rollback**: if a sync is cancelled or fails after the DB import started (`dbImportStarted`/`remoteImportStarted` flags), the catch block restores the respective backup — a half-imported or half-search-replaced DB is unusable. Uses a fresh `ActiveSync` for the restore (the cancelled one rejects all commands). Pushed files (rsync --delete) cannot be rolled back — only the DB.
 - Pre-flight check: DB sync requires the local site running (MySQL socket exists) — fails fast with a clear message
 - DB credentials from `site.mysql.{database,user,password}` (fallback root/root/local); multisite adds `--network` to search-replace (`MultiSite.No` is the empty string — truthiness check)
 - Search-replace covers `https://`, `http://` and protocol-relative `//` URLs in both directions
@@ -58,6 +60,7 @@ Modeled on WordPress' Plugin API. Three types:
 
 ### Hooks we use
 - `SiteInfo_TabNav_Items` (content) — mounts the invisible `KinstaDrawerHost` (no visible UI)
+- `SiteInfo_Top_TopRight` (content) — `KinstaStatusBadge`: "Linked to Kinsta" / live "Pulling… 42%" in the site view's top-right; click navigates to the Kinsta page. Hidden for unlinked sites. Sync-progress IPC events carry `siteId` + `mode` so badge and drawer filter per site; `error`/`cancelled` stages clear the badge.
 - `routes[site-info]` (content) — registers the Kinsta page route inside Local's site-info `<Switch>`
 - `siteInfoMoreMenu` (filter) — single "Kinsta" navigation item (Local only reads `label` + `click` from each item)
 - `preferencesMenuItems` (filter) — Kinsta section in Preferences

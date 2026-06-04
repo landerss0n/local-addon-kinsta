@@ -117,6 +117,8 @@ interface SyncProgress {
 interface SyncOptions {
   includeUploads?: boolean;
   includeDatabase?: boolean;
+  // Push only: create a native Kinsta backup (files + DB) before pushing
+  kinstaBackup?: boolean;
 }
 
 // The subset of Local.SiteJSON we actually use (full object arrives over IPC)
@@ -521,6 +523,65 @@ function searchReplacePairs(fromDomain: string, toDomain: string): Array<[string
   ];
 }
 
+// ---------------------------------------------------------------------------
+// Kinsta native backups (max 5 manual slots per environment)
+// ---------------------------------------------------------------------------
+
+const KINSTA_BACKUP_TAG = 'kinsta-sync-pre-push';
+const MANUAL_BACKUP_LIMIT = 5;
+
+// Poll GET /operations/{id} until it reports 200 (done) — 202 means in progress
+async function waitForKinstaOperation(client: AxiosInstance, operationId: string, sync: ActiveSync, timeoutMs = 10 * 60_000): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    if (sync.cancelled) throw new CancelledError();
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    try {
+      const res = await client.get(`/operations/${operationId}`);
+      if ((res.data?.status ?? res.status) === 200) return;
+      // 202 in body → keep polling
+    } catch (e: any) {
+      const httpStatus = e.response?.status;
+      if (httpStatus === 500) {
+        throw new Error(`Kinsta operation failed: ${e.response?.data?.message || 'unknown error'}`);
+      }
+      // 404 can appear briefly right after creation — keep polling
+      if (!httpStatus) throw e;
+    }
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('Timed out waiting for Kinsta backup operation');
+    }
+  }
+}
+
+// Create a native Kinsta backup (files + DB). Frees a slot by deleting the
+// oldest backup WE created if all manual slots are taken — never touches the
+// user's own backups. Returns false if no slot could be freed.
+async function createKinstaBackup(client: AxiosInstance, envId: string, sync: ActiveSync, onMessage: (msg: string) => void): Promise<boolean> {
+  const list = await client.get(`/sites/environments/${envId}/backups`);
+  const backups: Array<{ id: number; name?: string; note?: string | null; type: string; created_at: number }> =
+    list.data?.environment?.backups || [];
+  const manual = backups.filter(b => b.type === 'manual');
+
+  if (manual.length >= MANUAL_BACKUP_LIMIT) {
+    const ours = manual
+      .filter(b => (b.note || '').includes('kinsta-sync') || (b.name || '').includes('kinsta-sync'))
+      .sort((a, b) => a.created_at - b.created_at);
+    if (!ours.length) {
+      // All slots hold the user's own backups — do not delete those
+      return false;
+    }
+    onMessage('Freeing a Kinsta backup slot (removing our oldest)...');
+    const del = await client.delete(`/sites/environments/backups/${ours[0].id}`);
+    await waitForKinstaOperation(client, del.data.operation_id, sync);
+  }
+
+  onMessage('Creating Kinsta backup (files + database)...');
+  const created = await client.post(`/sites/environments/${envId}/manual-backups`, { tag: KINSTA_BACKUP_TAG });
+  await waitForKinstaOperation(client, created.data.operation_id, sync);
+  return true;
+}
+
 function notify(title: string, message: string): void {
   try {
     notifier?.notify({ title, message });
@@ -738,8 +799,9 @@ export default function (context: AddonMainContext): void {
       return { success: false, error: 'The local site must be running for database sync. Start the site in Local and try again.' };
     }
 
+    // siteId + mode let listeners (status badge, drawer) filter events
     const sendProgress = (progress: SyncProgress) => {
-      event.sender.send('kinsta:syncProgress', progress);
+      event.sender.send('kinsta:syncProgress', { ...progress, siteId: localSiteId, mode: 'pull' });
     };
 
     const sync: ActiveSync = { cancelled: false, child: null };
@@ -749,6 +811,12 @@ export default function (context: AddonMainContext): void {
     const localPublicPath = path.join(expandPath(site.path), 'app', 'public');
     const sshCommandForRsync = `ssh -p ${envInfo.sshPort} -o StrictHostKeyChecking=accept-new`;
     const remoteHost = `${envInfo.sshUser}@${envInfo.sshHost}`;
+
+    // Once the local DB import starts, a cancel/crash leaves the database
+    // half-written — these let the catch block restore the pre-pull backup.
+    let dbImportStarted = false;
+    const localBackupPath = path.join(TEMP_DIR, `${localSiteId}-pre-pull-backup.sql`);
+    const db = getDbCredentials(site);
 
     try {
       // Build exclude args (no shell — patterns are passed verbatim)
@@ -778,9 +846,7 @@ export default function (context: AddonMainContext): void {
 
       // 2. Database (if requested)
       if (options.includeDatabase) {
-        const db = getDbCredentials(site);
         const dbDumpPath = path.join(TEMP_DIR, `${localSiteId}-remote.sql`);
-        const localBackupPath = path.join(TEMP_DIR, `${localSiteId}-pre-pull-backup.sql`);
         const remoteDbPath = '/tmp/kinsta-local-export.sql';
 
         const mysqlBin = findServiceBinary(['mysql-', 'mariadb-'], 'mysql');
@@ -807,6 +873,7 @@ export default function (context: AddonMainContext): void {
         ]);
 
         sendProgress({ stage: 'database', progress: 75, message: 'Importing database locally...' });
+        dbImportStarted = true;
         await runCommand(sync, mysqlBin, [
           `-u${db.user}`, `-p${db.password}`, `--socket=${socketPath}`, db.database,
         ], { stdinFile: dbDumpPath });
@@ -883,9 +950,29 @@ export default function (context: AddonMainContext): void {
       return { success: true };
 
     } catch (error: any) {
+      // The local DB was (partially) overwritten — a half-imported or
+      // half-search-replaced database is unusable, so roll back to the
+      // backup taken right before the import.
+      if (dbImportStarted && fs.existsSync(localBackupPath)) {
+        try {
+          sendProgress({ stage: 'database', progress: 0, message: 'Restoring local database from backup...' });
+          const mysqlBinRestore = findServiceBinary(['mysql-', 'mariadb-'], 'mysql');
+          if (!mysqlBinRestore) throw new Error('mysql binary not found');
+          // Fresh ActiveSync — the cancelled one rejects every command
+          await runCommand({ cancelled: false, child: null }, mysqlBinRestore, [
+            `-u${db.user}`, `-p${db.password}`, `--socket=${socketPath}`, db.database,
+          ], { stdinFile: localBackupPath });
+          notify('Kinsta Sync', `Pull aborted — local database for ${site.name || site.domain} was restored from backup`);
+        } catch (restoreError: any) {
+          console.error('[Kinsta] DB restore after aborted pull failed:', restoreError.message);
+          notify('Kinsta Sync', `Pull aborted — automatic DB restore FAILED. Backup: ${localBackupPath}`);
+        }
+      }
       if (error instanceof CancelledError) {
+        sendProgress({ stage: 'cancelled', progress: 0, message: 'Sync cancelled' });
         return { success: false, cancelled: true, error: 'Sync cancelled' };
       }
+      sendProgress({ stage: 'error', progress: 0, message: error.message });
       notify('Kinsta Sync', `Pull failed for ${site.name || site.domain}`);
       return { success: false, error: error.message };
     } finally {
@@ -916,8 +1003,9 @@ export default function (context: AddonMainContext): void {
       return { success: false, error: 'The local site must be running for database sync. Start the site in Local and try again.' };
     }
 
+    // siteId + mode let listeners (status badge, drawer) filter events
     const sendProgress = (progress: SyncProgress) => {
-      event.sender.send('kinsta:syncProgress', progress);
+      event.sender.send('kinsta:syncProgress', { ...progress, siteId: localSiteId, mode: 'push' });
     };
 
     const sync: ActiveSync = { cancelled: false, child: null };
@@ -928,15 +1016,44 @@ export default function (context: AddonMainContext): void {
     const sshCommandForRsync = `ssh -p ${envInfo.sshPort} -o StrictHostKeyChecking=accept-new`;
     const remoteHost = `${envInfo.sshUser}@${envInfo.sshHost}`;
 
+    // Once the remote DB import starts, a cancel/crash leaves the remote
+    // database half-written — lets the catch block restore the remote backup.
+    let remoteImportStarted = false;
+
     try {
       const excludeArgs = EXCLUDE_PATTERNS.map(p => `--exclude=${p}`);
       if (!options.includeUploads) {
         excludeArgs.push('--exclude=wp-content/uploads/');
       }
 
-      // 1. Safety net: back up the remote database before any destructive step.
-      //    Stored in the remote home dir (outside ~/public, not web-accessible).
-      sendProgress({ stage: 'backup', progress: 3, message: 'Backing up remote database...' });
+      // 1a. Native Kinsta backup (files + DB) — restorable from MyKinsta.
+      //     If enabled and it fails, abort the push: the user opted into the
+      //     safety net, so don't proceed without it.
+      if (options.kinstaBackup !== false) {
+        const apiKeyForBackup = getApiKey();
+        if (apiKeyForBackup) {
+          sendProgress({ stage: 'backup', progress: 2, message: 'Creating Kinsta backup...' });
+          try {
+            const client = getKinstaClient(apiKeyForBackup);
+            const created = await createKinstaBackup(client, envInfo.envId, sync, (msg) => {
+              sendProgress({ stage: 'backup', progress: 3, message: msg });
+            });
+            if (created) {
+              sendProgress({ stage: 'backup', progress: 5, message: 'Kinsta backup created!' });
+            } else {
+              sendProgress({ stage: 'backup', progress: 5, message: 'All 5 manual backup slots are yours — skipping Kinsta backup' });
+              notify('Kinsta Sync', 'Kinsta backup skipped: all 5 manual slots hold your own backups');
+            }
+          } catch (backupError: any) {
+            if (backupError instanceof CancelledError) throw backupError;
+            throw new Error(`Kinsta backup failed — push aborted: ${backupError.message}`);
+          }
+        }
+      }
+
+      // 1b. Safety net for the automatic rollback: export the remote database.
+      //     Stored in the remote home dir (outside ~/public, not web-accessible).
+      sendProgress({ stage: 'backup', progress: 6, message: 'Backing up remote database...' });
       await runCommand(sync, 'ssh', sshArgs(envInfo, 'cd ~/public && wp db export ~/kinsta-sync-pre-push-backup.sql'));
 
       // 2. Sync files (live progress, flags adapted to the rsync version)
@@ -983,6 +1100,7 @@ export default function (context: AddonMainContext): void {
         ]);
 
         sendProgress({ stage: 'database', progress: 75, message: 'Importing database on Kinsta...' });
+        remoteImportStarted = true;
         await runCommand(sync, 'ssh', sshArgs(envInfo, `cd ~/public && wp db import ${remoteDbPath}`));
 
         sendProgress({ stage: 'search-replace', progress: 82, message: 'Running search-replace...' });
@@ -1027,9 +1145,25 @@ export default function (context: AddonMainContext): void {
       return { success: true };
 
     } catch (error: any) {
+      // The remote DB was (partially) overwritten — restore the backup we
+      // exported on the remote before the import.
+      if (remoteImportStarted) {
+        try {
+          sendProgress({ stage: 'database', progress: 0, message: 'Restoring remote database from backup...' });
+          // Fresh ActiveSync — the cancelled one rejects every command
+          await runCommand({ cancelled: false, child: null }, 'ssh', sshArgs(envInfo,
+            'cd ~/public && wp db import ~/kinsta-sync-pre-push-backup.sql'));
+          notify('Kinsta Sync', `Push aborted — remote database for ${site.name || site.domain} was restored from backup`);
+        } catch (restoreError: any) {
+          console.error('[Kinsta] Remote DB restore after aborted push failed:', restoreError.message);
+          notify('Kinsta Sync', 'Push aborted — automatic remote DB restore FAILED. Backup on server: ~/kinsta-sync-pre-push-backup.sql');
+        }
+      }
       if (error instanceof CancelledError) {
+        sendProgress({ stage: 'cancelled', progress: 0, message: 'Sync cancelled' });
         return { success: false, cancelled: true, error: 'Sync cancelled' };
       }
+      sendProgress({ stage: 'error', progress: 0, message: error.message });
       notify('Kinsta Sync', `Push failed for ${site.name || site.domain}`);
       return { success: false, error: error.message };
     } finally {

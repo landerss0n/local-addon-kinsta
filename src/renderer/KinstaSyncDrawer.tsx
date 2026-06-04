@@ -135,6 +135,7 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
   const [selectedEnvId, setSelectedEnvId] = useState<string>('');
   const [includeDatabase, setIncludeDatabase] = useState(true);
   const [includeUploads, setIncludeUploads] = useState(false);
+  const [kinstaBackup, setKinstaBackup] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
@@ -151,7 +152,10 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
   }, [isOpen, siteLink]);
 
   useEffect(() => {
-    const progressHandler = (_event: any, progress: SyncProgress) => {
+    const progressHandler = (_event: any, progress: SyncProgress & { siteId?: string }) => {
+      // Events carry siteId — ignore other sites' syncs
+      if (progress.siteId && progress.siteId !== site.id) return;
+      if (progress.stage === 'error' || progress.stage === 'cancelled') return; // handled via invoke result
       setSyncProgress(progress);
       if (progress.stage === 'done') {
         setIsComplete(true);
@@ -163,7 +167,7 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
     return () => {
       ipcRenderer.removeListener('kinsta:syncProgress', progressHandler);
     };
-  }, []);
+  }, [site.id]);
 
   const loadEnvironments = async () => {
     const result = await ipcRenderer.invoke('kinsta:getEnvironments', siteLink.kinstaSiteId);
@@ -228,7 +232,8 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
     const action = mode === 'pull' ? 'kinsta:pull' : 'kinsta:push';
     const result = await ipcRenderer.invoke(action, site.id, site, envInfo, {
       includeUploads,
-      includeDatabase
+      includeDatabase,
+      kinstaBackup
     });
 
     if (result.success) {
@@ -414,6 +419,16 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
                     checked={includeUploads}
                     onChange={(e: any) => setIncludeUploads(e.target.checked)}
                   />
+                  {isPush && (
+                    <>
+                      <div style={{ height: '12px' }} />
+                      <Checkbox
+                        label="Create Kinsta backup first (files + database)"
+                        checked={kinstaBackup}
+                        onChange={(e: any) => setKinstaBackup(e.target.checked)}
+                      />
+                    </>
+                  )}
                 </div>
               </div>
 
