@@ -1,20 +1,55 @@
 import { AddonMainContext } from '@getflywheel/local/main';
+import * as Local from '@getflywheel/local';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { execSync } from 'child_process';
+import { spawn, spawnSync, ChildProcess } from 'child_process';
 import axios, { AxiosInstance } from 'axios';
 import type { IpcMainInvokeEvent, SafeStorage } from 'electron';
 
 const KINSTA_API_BASE = 'https://api.kinsta.com/v2';
-const CONFIG_DIR = path.join(os.homedir(), '.kinsta-sync');
-const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
-const KEY_FILE = path.join(CONFIG_DIR, '.api-key.enc'); // Encrypted API key
-const SITES_FILE = path.join(CONFIG_DIR, 'sites.json');
-const TEMP_DIR = path.join(CONFIG_DIR, 'tmp');
 
-// Will be set from context.electron.safeStorage
+// Legacy config location (pre userDataPath migration)
+const LEGACY_CONFIG_DIR = path.join(os.homedir(), '.kinsta-sync');
+
+// Set from context in the exported entry point
 let safeStorage: SafeStorage | null = null;
+let notifier: AddonMainContext['notifier'] | null = null;
+let userDataPath = '';
+let appPath = '';
+
+// Config paths — resolved once userDataPath is known
+let CONFIG_DIR = LEGACY_CONFIG_DIR;
+let CONFIG_FILE = '';
+let KEY_FILE = '';
+let SITES_FILE = '';
+let TEMP_DIR = '';
+
+function resolveConfigPaths(): void {
+  // Store under Local's own user data dir (idiomatic per the Context API)
+  CONFIG_DIR = userDataPath
+    ? path.join(userDataPath, 'addons-data', 'kinsta-sync')
+    : LEGACY_CONFIG_DIR;
+  CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
+  KEY_FILE = path.join(CONFIG_DIR, '.api-key.enc');
+  SITES_FILE = path.join(CONFIG_DIR, 'sites.json');
+  TEMP_DIR = path.join(CONFIG_DIR, 'tmp');
+}
+
+// One-time migration from ~/.kinsta-sync to userDataPath
+function migrateLegacyConfig(): void {
+  if (CONFIG_DIR === LEGACY_CONFIG_DIR) return;
+  if (!fs.existsSync(LEGACY_CONFIG_DIR)) return;
+  ensureConfigDir();
+  for (const file of ['config.json', '.api-key.enc', 'sites.json']) {
+    const from = path.join(LEGACY_CONFIG_DIR, file);
+    const to = path.join(CONFIG_DIR, file);
+    if (fs.existsSync(from) && !fs.existsSync(to)) {
+      fs.copyFileSync(from, to);
+      console.log(`[Kinsta] Migrated ${file} to ${CONFIG_DIR}`);
+    }
+  }
+}
 
 // Files/folders to exclude during sync
 const EXCLUDE_PATTERNS = [
@@ -45,8 +80,11 @@ interface KinstaConfig {
   companyId?: string;
 }
 
-interface KinstaConfigWithKey extends KinstaConfig {
-  apiKey?: string;
+interface SyncHistoryEntry {
+  mode: 'pull' | 'push';
+  envType: string;             // 'live' | 'staging'
+  at: string;                  // ISO timestamp
+  durationMs: number;
 }
 
 interface SiteLink {
@@ -54,7 +92,12 @@ interface SiteLink {
   kinstaSiteId: string;
   kinstaSiteName: string;      // Display name for UI
   kinstaSiteSlug: string;      // Actual site name for SSH username
+  lastPullAt?: string;         // ISO timestamp of last successful pull
+  lastPushAt?: string;         // ISO timestamp of last successful push
+  history?: SyncHistoryEntry[]; // Most recent first, capped
 }
+
+const HISTORY_LIMIT = 10;
 
 interface EnvironmentInfo {
   envId: string;
@@ -71,14 +114,25 @@ interface SyncProgress {
   message: string;
 }
 
+interface SyncOptions {
+  includeUploads?: boolean;
+  includeDatabase?: boolean;
+}
+
+// The subset of Local.SiteJSON we actually use (full object arrives over IPC)
+interface SiteInfo {
+  id: string;
+  name?: string;
+  path: string;
+  domain: string;
+  multiSite?: Local.SiteJSON['multiSite'];
+  mysql?: { database?: string; user?: string; password?: string };
+}
+
 // Config helpers
 function ensureConfigDir(): void {
-  if (!fs.existsSync(CONFIG_DIR)) {
-    fs.mkdirSync(CONFIG_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(TEMP_DIR)) {
-    fs.mkdirSync(TEMP_DIR, { recursive: true });
-  }
+  fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
 function loadConfig(): KinstaConfig {
@@ -138,12 +192,6 @@ function deleteApiKey(): void {
   }
 }
 
-function getConfigWithKey(): KinstaConfigWithKey {
-  const config = loadConfig();
-  const apiKey = getApiKey();
-  return { ...config, apiKey: apiKey || undefined };
-}
-
 function loadSiteLinks(): Record<string, SiteLink> {
   ensureConfigDir();
   if (fs.existsSync(SITES_FILE)) {
@@ -155,6 +203,23 @@ function loadSiteLinks(): Record<string, SiteLink> {
 function saveSiteLinks(links: Record<string, SiteLink>): void {
   ensureConfigDir();
   fs.writeFileSync(SITES_FILE, JSON.stringify(links, null, 2));
+}
+
+function recordSync(localSiteId: string, mode: 'pull' | 'push', envType: string, durationMs: number): void {
+  const links = loadSiteLinks();
+  const link = links[localSiteId];
+  if (!link) return;
+  const at = new Date().toISOString();
+  if (mode === 'pull') {
+    link.lastPullAt = at;
+  } else {
+    link.lastPushAt = at;
+  }
+  link.history = [
+    { mode, envType, at, durationMs },
+    ...(link.history || []),
+  ].slice(0, HISTORY_LIMIT);
+  saveSiteLinks(links);
 }
 
 // Security: Validate SSH/shell values to prevent command injection
@@ -221,26 +286,315 @@ function cleanupTempFiles(): void {
   }
 }
 
-// Kinsta API client
-function getKinstaClient(apiKey: string): AxiosInstance {
-  return axios.create({
-    baseURL: KINSTA_API_BASE,
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
+// ---------------------------------------------------------------------------
+// Local-installation paths (derived from the Context API, not hardcoded)
+// ---------------------------------------------------------------------------
+
+function getServicesPath(): string {
+  return path.join(userDataPath, 'lightning-services');
+}
+
+function getMysqlSocketPath(localSiteId: string): string {
+  return path.join(userDataPath, 'run', localSiteId, 'mysql', 'mysqld.sock');
+}
+
+// Find a binary (mysql/mysqldump/php) inside Local's lightning-services
+function findServiceBinary(prefixes: string[], binName: string): string | null {
+  const servicesPath = getServicesPath();
+  if (!fs.existsSync(servicesPath)) return null;
+  const dirs = fs.readdirSync(servicesPath)
+    .filter(d => prefixes.some(p => d.startsWith(p)))
+    .sort()
+    .reverse();
+  const archDirs = process.arch === 'arm64'
+    ? [`${process.platform}-arm64`, `${process.platform}-x64`]
+    : [`${process.platform}-x64`, `${process.platform}-arm64`];
+  for (const dir of dirs) {
+    for (const archDir of archDirs) {
+      const candidate = path.join(servicesPath, dir, 'bin', archDir, 'bin', binName);
+      if (fs.existsSync(candidate)) return candidate;
     }
+  }
+  return null;
+}
+
+function findWpCliPhar(): string | null {
+  const candidates = [
+    // appPath is typically <App>/Contents/Resources/app.asar
+    appPath && path.resolve(appPath, '..', 'extraResources', 'bin', 'wp-cli', 'wp-cli.phar'),
+    appPath && path.resolve(appPath, '..', '..', 'extraResources', 'bin', 'wp-cli', 'wp-cli.phar'),
+    (process as any).resourcesPath && path.join((process as any).resourcesPath, 'extraResources', 'bin', 'wp-cli', 'wp-cli.phar'),
+    '/Applications/Local.app/Contents/Resources/extraResources/bin/wp-cli/wp-cli.phar',
+  ].filter(Boolean) as string[];
+  return candidates.find(c => fs.existsSync(c)) || null;
+}
+
+// ---------------------------------------------------------------------------
+// Async command runner with cancellation support
+// ---------------------------------------------------------------------------
+
+class CancelledError extends Error {
+  constructor() {
+    super('Sync cancelled');
+    this.name = 'CancelledError';
+  }
+}
+
+interface ActiveSync {
+  cancelled: boolean;
+  child: ChildProcess | null;
+}
+
+// One active sync per Local site
+const activeSyncs = new Map<string, ActiveSync>();
+
+interface RunOptions {
+  // Pipe this file into the process' stdin (e.g. mysql < dump.sql)
+  stdinFile?: string;
+  // Pipe the process' stdout into this file (e.g. mysqldump > dump.sql)
+  stdoutFile?: string;
+  // Called for every stdout chunk (e.g. rsync progress parsing)
+  onStdout?: (chunk: string) => void;
+  env?: NodeJS.ProcessEnv;
+}
+
+// Spawn without a shell (no injection surface), collect stderr for real error
+// messages, and register the child so the sync can be cancelled.
+function runCommand(sync: ActiveSync, cmd: string, args: string[], opts: RunOptions = {}): Promise<void> {
+  if (sync.cancelled) return Promise.reject(new CancelledError());
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, {
+      env: opts.env || process.env,
+      stdio: [opts.stdinFile ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+    });
+    sync.child = child;
+
+    let stderrTail = '';
+    let settled = false;
+
+    if (opts.stdinFile) {
+      const input = fs.createReadStream(opts.stdinFile);
+      input.on('error', (err) => { if (!settled) { settled = true; child.kill(); reject(err); } });
+      input.pipe(child.stdin!);
+    }
+
+    let output: fs.WriteStream | null = null;
+    if (opts.stdoutFile) {
+      output = fs.createWriteStream(opts.stdoutFile);
+      output.on('error', (err) => { if (!settled) { settled = true; child.kill(); reject(err); } });
+      child.stdout!.pipe(output);
+    } else {
+      child.stdout!.on('data', (d: Buffer) => {
+        opts.onStdout?.(d.toString());
+      });
+    }
+
+    child.stderr!.on('data', (d: Buffer) => {
+      stderrTail = (stderrTail + d.toString()).slice(-4000);
+    });
+
+    child.on('error', (err) => {
+      if (!settled) { settled = true; reject(err); }
+    });
+
+    child.on('close', (code) => {
+      sync.child = null;
+      output?.end();
+      if (settled) return;
+      settled = true;
+      if (sync.cancelled) {
+        reject(new CancelledError());
+      } else if (code === 0) {
+        resolve();
+      } else {
+        const detail = stderrTail.trim().split('\n').slice(-5).join('\n');
+        reject(new Error(`${path.basename(cmd)} exited with code ${code}${detail ? `:\n${detail}` : ''}`));
+      }
+    });
   });
 }
 
+function sshArgs(envInfo: EnvironmentInfo, remoteCmd: string): string[] {
+  return [
+    '-p', envInfo.sshPort,
+    '-o', 'StrictHostKeyChecking=accept-new',
+    `${envInfo.sshUser}@${envInfo.sshHost}`,
+    remoteCmd,
+  ];
+}
+
+// macOS no longer ships GNU rsync: newer versions bundle openrsync, older ones
+// rsync 2.6.9 — neither supports --info=progress2 (GNU >= 3.1). Version sniffing
+// is unreliable across implementations, so we capability-probe each flag:
+// `rsync <flag> --version` exits 0 only if the flag is recognized.
+// Prefer a Homebrew/GNU rsync when installed.
+interface RsyncInfo {
+  bin: string;
+  supportsProgress2: boolean;
+  supportsProgress: boolean;
+}
+
+let cachedRsync: RsyncInfo | null = null;
+
+function probeRsyncFlag(bin: string, flag: string): boolean {
+  try {
+    return spawnSync(bin, [flag, '--version'], { stdio: 'ignore' }).status === 0;
+  } catch (e) {
+    return false;
+  }
+}
+
+function resolveRsync(): RsyncInfo {
+  if (cachedRsync) return cachedRsync;
+
+  const candidates = ['/opt/homebrew/bin/rsync', '/usr/local/bin/rsync', '/usr/bin/rsync', 'rsync'];
+  let fallback: RsyncInfo | null = null;
+
+  for (const bin of candidates) {
+    if (bin.startsWith('/') && !fs.existsSync(bin)) continue;
+    try {
+      if (spawnSync(bin, ['--version'], { stdio: 'ignore' }).status !== 0) continue;
+    } catch (e) {
+      continue;
+    }
+    const info: RsyncInfo = {
+      bin,
+      supportsProgress2: probeRsyncFlag(bin, '--info=progress2'),
+      supportsProgress: probeRsyncFlag(bin, '--progress'),
+    };
+    if (info.supportsProgress2) {
+      cachedRsync = info;
+      return info;
+    }
+    fallback = fallback || info;
+  }
+
+  cachedRsync = fallback || { bin: 'rsync', supportsProgress2: false, supportsProgress: false };
+  return cachedRsync;
+}
+
+function rsyncProgressArgs(rsync: RsyncInfo): string[] {
+  if (rsync.supportsProgress2) return ['--info=progress2'];
+  if (rsync.supportsProgress) return ['--progress'];
+  return [];
+}
+
+// Parse rsync progress output into an overall percentage.
+// - rsync >= 3.1 (--info=progress2): "  1,234,567  42%  ..." is overall — use directly.
+// - rsync 2.6.9 (--progress): per-file % bounces, but "to-check=remaining/total"
+//   after each file gives a stable overall estimate.
+function makeRsyncProgressParser(rsync: RsyncInfo, onPercent: (pct: number) => void): (chunk: string) => void {
+  return (chunk: string) => {
+    const toCheck = chunk.match(/to-check=(\d+)\/(\d+)/g);
+    if (toCheck && toCheck.length) {
+      const m = toCheck[toCheck.length - 1].match(/to-check=(\d+)\/(\d+)/)!;
+      const remaining = parseInt(m[1], 10);
+      const total = parseInt(m[2], 10);
+      if (total > 0) onPercent(Math.round(((total - remaining) / total) * 100));
+      return;
+    }
+    if (!rsync.supportsProgress2) return; // per-file % would bounce — skip
+    const matches = chunk.match(/(\d{1,3})%/g);
+    if (matches && matches.length) {
+      const pct = parseInt(matches[matches.length - 1], 10);
+      if (!isNaN(pct) && pct >= 0 && pct <= 100) onPercent(pct);
+    }
+  };
+}
+
+// Resolve DB credentials from the site object (with Local's defaults)
+function getDbCredentials(site: SiteInfo): { database: string; user: string; password: string } {
+  return {
+    database: site.mysql?.database || 'local',
+    user: site.mysql?.user || 'root',
+    password: site.mysql?.password || 'root',
+  };
+}
+
+// WP-CLI search-replace passes covering https, http, and protocol-relative URLs
+function searchReplacePairs(fromDomain: string, toDomain: string): Array<[string, string]> {
+  return [
+    [`https://${fromDomain}`, `https://${toDomain}`],
+    [`http://${fromDomain}`, `http://${toDomain}`],
+    [`//${fromDomain}`, `//${toDomain}`],
+  ];
+}
+
+function notify(title: string, message: string): void {
+  try {
+    notifier?.notify({ title, message });
+  } catch (e) {
+    // Notifications are best-effort
+  }
+}
+
+// Dev convenience: Local only loads add-on bundles at app start, so watch the
+// compiled renderer bundle and reload Local's windows when webpack rewrites it.
+// Renderer changes hot-reload this way; main-process changes still need a full
+// app restart (Electron cannot swap the main process at runtime).
+function watchRendererBundle(electron: AddonMainContext['electron']): void {
+  // __dirname is lib/main at runtime
+  const rendererDir = path.resolve(__dirname, '..', 'renderer');
+  if (!fs.existsSync(rendererDir)) return;
+
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    // Watch the directory (not the file) — webpack replaces the file inode
+    fs.watch(rendererDir, (_event, filename) => {
+      if (filename !== 'index.js') return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        try {
+          for (const win of electron.BrowserWindow.getAllWindows()) {
+            win.webContents.reloadIgnoringCache();
+          }
+          console.log('[Kinsta] Renderer bundle changed — reloaded Local windows');
+        } catch (e) {
+          console.error('[Kinsta] Renderer reload failed:', e);
+        }
+      }, 400);
+    });
+  } catch (e) {
+    console.error('[Kinsta] Could not watch renderer bundle:', e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
 export default function (context: AddonMainContext): void {
-  const { electron } = context;
+  const { electron, hooks } = context;
   const { ipcMain } = electron;
 
-  // Initialize safeStorage for secure API key storage
+  // Initialize from the Context API
   safeStorage = electron.safeStorage;
+  notifier = context.notifier;
+  userDataPath = String(context.environment.userDataPath || '');
+  appPath = String(context.environment.appPath || '');
+  resolveConfigPaths();
+  migrateLegacyConfig();
 
   // Security: Clean up any leftover temp files from previous sessions
   cleanupTempFiles();
+
+  // Hot-reload Local's renderer when the compiled renderer bundle changes
+  watchRendererBundle(electron);
+
+  // Clean up stale links when a site is deleted in Local
+  try {
+    hooks.addAction('siteDeleted', (siteId: string) => {
+      const links = loadSiteLinks();
+      if (links[siteId]) {
+        delete links[siteId];
+        saveSiteLinks(links);
+        console.log(`[Kinsta] Removed link for deleted site ${siteId}`);
+      }
+    });
+  } catch (e) {
+    console.error('[Kinsta] Could not register siteDeleted action:', e);
+  }
 
   // Test API connection
   ipcMain.handle('kinsta:testConnection', async (_event: IpcMainInvokeEvent, apiKey: string, companyId: string) => {
@@ -334,15 +688,42 @@ export default function (context: AddonMainContext): void {
     return { success: true };
   });
 
+  // Clear Kinsta cache for an environment (also used standalone from the page).
+  // Endpoint per Kinsta API docs: POST /sites/tools/clear-cache { environment_id }
+  ipcMain.handle('kinsta:clearCache', async (_event: IpcMainInvokeEvent, envId: string) => {
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      return { success: false, error: 'Not connected' };
+    }
+    try {
+      const client = getKinstaClient(apiKey);
+      await client.post('/sites/tools/clear-cache', { environment_id: envId });
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.message || error.message };
+    }
+  });
+
+  // Cancel a running sync for a site
+  ipcMain.handle('kinsta:cancelSync', async (_event: IpcMainInvokeEvent, localSiteId: string) => {
+    const sync = activeSyncs.get(localSiteId);
+    if (sync) {
+      sync.cancelled = true;
+      sync.child?.kill('SIGTERM');
+    }
+    return { success: true };
+  });
+
   // Pull from Kinsta
-  ipcMain.handle('kinsta:pull', async (event: IpcMainInvokeEvent, localSiteId: string, site: any, envInfo: EnvironmentInfo, options: { includeUploads?: boolean; includeDatabase?: boolean }) => {
+  ipcMain.handle('kinsta:pull', async (event: IpcMainInvokeEvent, localSiteId: string, site: SiteInfo, envInfo: EnvironmentInfo, options: SyncOptions) => {
     const links = loadSiteLinks();
     const link = links[localSiteId];
 
-    console.log('[Kinsta] Pull started, envInfo:', JSON.stringify(envInfo));
-
     if (!link) {
       return { success: false, error: 'Site not linked to Kinsta' };
+    }
+    if (activeSyncs.has(localSiteId)) {
+      return { success: false, error: 'A sync is already running for this site' };
     }
 
     // Security: Validate environment data before using in shell commands
@@ -351,91 +732,98 @@ export default function (context: AddonMainContext): void {
       return { success: false, error: 'Invalid environment configuration.' };
     }
 
+    // Pre-flight: database sync needs the local site running (MySQL socket)
+    const socketPath = getMysqlSocketPath(localSiteId);
+    if (options.includeDatabase && !fs.existsSync(socketPath)) {
+      return { success: false, error: 'The local site must be running for database sync. Start the site in Local and try again.' };
+    }
+
     const sendProgress = (progress: SyncProgress) => {
       event.sender.send('kinsta:syncProgress', progress);
     };
 
-    try {
-      const localPublicPath = path.join(expandPath(site.path), 'app', 'public');
-      const sshCmd = `ssh -p ${envInfo.sshPort} -o StrictHostKeyChecking=accept-new`;
-      const remotePath = `${envInfo.sshUser}@${envInfo.sshHost}:~/public`;
+    const sync: ActiveSync = { cancelled: false, child: null };
+    activeSyncs.set(localSiteId, sync);
+    const startedAt = Date.now();
 
-      // Build exclude args
-      let excludeArgs = EXCLUDE_PATTERNS.map(p => `--exclude='${p}'`).join(' ');
+    const localPublicPath = path.join(expandPath(site.path), 'app', 'public');
+    const sshCommandForRsync = `ssh -p ${envInfo.sshPort} -o StrictHostKeyChecking=accept-new`;
+    const remoteHost = `${envInfo.sshUser}@${envInfo.sshHost}`;
+
+    try {
+      // Build exclude args (no shell — patterns are passed verbatim)
+      const excludeArgs = EXCLUDE_PATTERNS.map(p => `--exclude=${p}`);
       if (!options.includeUploads) {
-        excludeArgs += ` --exclude='wp-content/uploads/'`;
+        excludeArgs.push('--exclude=wp-content/uploads/');
       }
 
-      // 1. Sync files
-      sendProgress({ stage: 'files', progress: 10, message: 'Syncing files from Kinsta...' });
+      // 1. Sync files (live progress, flags adapted to the rsync version)
+      sendProgress({ stage: 'files', progress: 5, message: 'Syncing files from Kinsta...' });
 
-      // Escape spaces in local path for shell
-      const escapedLocalPath = localPublicPath.replace(/ /g, '\\ ');
-      const rsyncCmd = `rsync -az ${excludeArgs} -e "${sshCmd}" ${envInfo.sshUser}@${envInfo.sshHost}:~/public/ ${escapedLocalPath}/`;
-      execSync(rsyncCmd, { encoding: 'utf8', shell: '/bin/bash', stdio: 'pipe' });
+      const rsync = resolveRsync();
+      await runCommand(sync, rsync.bin, [
+        '-az', ...rsyncProgressArgs(rsync), ...excludeArgs,
+        '-e', sshCommandForRsync,
+        `${remoteHost}:~/public/`,
+        `${localPublicPath}/`,
+      ], {
+        onStdout: makeRsyncProgressParser(rsync, (pct) => {
+          // Files = 5–50% of the overall pull
+          const overall = 5 + Math.round(pct * 0.45);
+          sendProgress({ stage: 'files', progress: overall, message: `Syncing files from Kinsta... ${pct}%` });
+        }),
+      });
 
       sendProgress({ stage: 'files', progress: 50, message: 'Files synced!' });
 
       // 2. Database (if requested)
       if (options.includeDatabase) {
-        sendProgress({ stage: 'database', progress: 60, message: 'Exporting database from Kinsta...' });
-
+        const db = getDbCredentials(site);
         const dbDumpPath = path.join(TEMP_DIR, `${localSiteId}-remote.sql`);
+        const localBackupPath = path.join(TEMP_DIR, `${localSiteId}-pre-pull-backup.sql`);
         const remoteDbPath = '/tmp/kinsta-local-export.sql';
 
-        // Export from Kinsta
-        execSync(`${sshCmd} ${envInfo.sshUser}@${envInfo.sshHost} "cd ~/public && wp db export ${remoteDbPath}"`, { encoding: 'utf8', stdio: 'pipe' });
+        const mysqlBin = findServiceBinary(['mysql-', 'mariadb-'], 'mysql');
+        const mysqldumpBin = findServiceBinary(['mysql-', 'mariadb-'], 'mysqldump');
+        if (!mysqlBin || !mysqldumpBin) {
+          throw new Error('Could not find MySQL binaries in Local\'s lightning-services');
+        }
 
-        // Download
-        execSync(`scp -P ${envInfo.sshPort} -o StrictHostKeyChecking=accept-new ${envInfo.sshUser}@${envInfo.sshHost}:${remoteDbPath} "${dbDumpPath}"`, { encoding: 'utf8', stdio: 'pipe' });
+        // Safety net: back up the local database before overwriting it
+        sendProgress({ stage: 'database', progress: 52, message: 'Backing up local database...' });
+        await runCommand(sync, mysqldumpBin, [
+          `-u${db.user}`, `-p${db.password}`, `--socket=${socketPath}`, db.database,
+        ], { stdoutFile: localBackupPath });
+
+        sendProgress({ stage: 'database', progress: 58, message: 'Exporting database from Kinsta...' });
+        await runCommand(sync, 'ssh', sshArgs(envInfo, `cd ~/public && wp db export ${remoteDbPath}`));
+
+        sendProgress({ stage: 'database', progress: 65, message: 'Downloading database...' });
+        await runCommand(sync, 'scp', [
+          '-P', envInfo.sshPort,
+          '-o', 'StrictHostKeyChecking=accept-new',
+          `${remoteHost}:${remoteDbPath}`,
+          dbDumpPath,
+        ]);
 
         sendProgress({ stage: 'database', progress: 75, message: 'Importing database locally...' });
+        await runCommand(sync, mysqlBin, [
+          `-u${db.user}`, `-p${db.password}`, `--socket=${socketPath}`, db.database,
+        ], { stdinFile: dbDumpPath });
 
-        // Import locally using Local's MySQL
-        const localAppSupport = path.join(os.homedir(), 'Library', 'Application Support', 'Local');
-        const socketPath = path.join(localAppSupport, 'run', localSiteId, 'mysql', 'mysqld.sock');
-
-        if (!fs.existsSync(socketPath)) {
-          sendProgress({ stage: 'database', progress: 80, message: 'MySQL socket not found - is site running?' });
-          throw new Error(`MySQL socket not found: ${socketPath}`);
-        }
-
-        if (fs.existsSync(socketPath)) {
-          const localServicesPath = path.join(localAppSupport, 'lightning-services');
-          const mysqlDirs = fs.readdirSync(localServicesPath).filter(d => d.startsWith('mysql-') || d.startsWith('mariadb-')).sort().reverse();
-          const arch = process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
-          let mysqlBin = path.join(localServicesPath, mysqlDirs[0], 'bin', arch, 'bin', 'mysql');
-
-          if (!fs.existsSync(mysqlBin)) {
-            mysqlBin = path.join(localServicesPath, mysqlDirs[0], 'bin', 'darwin-arm64', 'bin', 'mysql');
-          }
-
-          const importCmd = `"${mysqlBin}" -uroot -proot --socket="${socketPath}" local < "${dbDumpPath}"`;
-          execSync(importCmd, { encoding: 'utf8', shell: '/bin/bash', stdio: 'pipe' });
-          sendProgress({ stage: 'database', progress: 82, message: 'Database imported!' });
-        }
-
-        sendProgress({ stage: 'search-replace', progress: 85, message: 'Running search-replace...' });
+        sendProgress({ stage: 'search-replace', progress: 82, message: 'Running search-replace...' });
 
         // Search-replace URLs using WP-CLI (handles serialized data correctly)
         const remoteDomain = envInfo.remoteDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
         const localDomain = site.domain;
 
-        // Find PHP and MySQL binaries
-        const localServicesPath = path.join(localAppSupport, 'lightning-services');
-        const phpDirs = fs.readdirSync(localServicesPath).filter(d => d.startsWith('php-')).sort().reverse();
-        const mysqlDirs2 = fs.readdirSync(localServicesPath).filter(d => d.startsWith('mysql-') || d.startsWith('mariadb-')).sort().reverse();
+        const phpBin = findServiceBinary(['php-'], 'php');
+        const wpCliPhar = findWpCliPhar();
+        if (!phpBin) throw new Error('Could not find PHP binary in Local\'s lightning-services');
+        if (!wpCliPhar) throw new Error('Could not find WP-CLI in the Local installation');
+        const mysqlBinDir = path.dirname(mysqlBin);
 
-        const arch2 = process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
-        let phpBin = path.join(localServicesPath, phpDirs[0], 'bin', arch2, 'bin', 'php');
-        if (!fs.existsSync(phpBin)) {
-          phpBin = path.join(localServicesPath, phpDirs[0], 'bin', 'darwin-arm64', 'bin', 'php');
-        }
-
-        const mysqlBinDir = path.join(localServicesPath, mysqlDirs2[0], 'bin', arch2, 'bin');
-        const wpCliPhar = '/Applications/Local.app/Contents/Resources/extraResources/bin/wp-cli/wp-cli.phar';
-
-        // Temporarily modify wp-config.php to include socket path (same approach as CLI)
+        // Temporarily modify wp-config.php to include socket path
         const wpConfigPath = path.join(localPublicPath, 'wp-config.php');
         const wpConfigBackupPath = wpConfigPath + '.kinsta-sync-bak';
         let wpConfigBackup: string | null = null;
@@ -448,87 +836,73 @@ export default function (context: AddonMainContext): void {
           }
 
           wpConfigBackup = fs.readFileSync(wpConfigPath, 'utf8');
-
-          // Save backup before modifying
           fs.writeFileSync(wpConfigBackupPath, wpConfigBackup);
 
-          // Replace DB_HOST with socket path
           const wpConfigModified = wpConfigBackup.replace(
             /define\s*\(\s*['"]DB_HOST['"]\s*,\s*['"]([^'"]*)['"]\s*\)/,
             `define('DB_HOST', 'localhost:${socketPath}')`
           );
           fs.writeFileSync(wpConfigPath, wpConfigModified);
 
-          // Verify binaries exist
-          if (!fs.existsSync(phpBin)) {
-            sendProgress({ stage: 'search-replace', progress: 90, message: `PHP not found: ${phpBin}` });
-            throw new Error(`PHP binary not found: ${phpBin}`);
+          const wpEnv = { ...process.env, PATH: `${mysqlBinDir}:${process.env.PATH || ''}` };
+          // MultiSite.No is the empty string, so truthiness is the correct check
+          const networkArgs = site.multiSite ? ['--network'] : [];
+          const pairs = searchReplacePairs(remoteDomain, localDomain);
+
+          for (let i = 0; i < pairs.length; i++) {
+            const [from, to] = pairs[i];
+            sendProgress({ stage: 'search-replace', progress: 84 + i * 4, message: `Replacing ${from} → ${to}` });
+            await runCommand(sync, phpBin, [
+              wpCliPhar, 'search-replace', from, to,
+              '--all-tables', '--skip-columns=guid', '--skip-plugins', '--skip-themes',
+              `--path=${localPublicPath}`, '--allow-root', ...networkArgs,
+            ], { env: wpEnv });
           }
-          if (!fs.existsSync(wpCliPhar)) {
-            sendProgress({ stage: 'search-replace', progress: 90, message: `WP-CLI not found` });
-            throw new Error(`WP-CLI not found: ${wpCliPhar}`);
-          }
 
-          sendProgress({ stage: 'search-replace', progress: 87, message: `Replacing ${remoteDomain} → ${localDomain}` });
-
-          // Run WP-CLI search-replace with proper options:
-          // --all-tables: search all tables
-          // --skip-columns=guid: don't touch guid column (breaks WP)
-          // --skip-plugins --skip-themes: faster execution
-          const envPath = `PATH="${mysqlBinDir}:$PATH"`;
-          const srCmd = `${envPath} "${phpBin}" "${wpCliPhar}" search-replace 'https://${remoteDomain}' 'https://${localDomain}' --all-tables --skip-columns=guid --skip-plugins --skip-themes --path="${localPublicPath}" --allow-root 2>&1`;
-
-          const srOutput = execSync(srCmd, { encoding: 'utf8', shell: '/bin/bash', stdio: 'pipe' });
-          sendProgress({ stage: 'search-replace', progress: 92, message: `Done: ${srOutput.split('\n')[0] || 'OK'}` });
-
-          // Also replace protocol-relative URLs (//example.com -> //example.local)
-          const srCmd2 = `${envPath} "${phpBin}" "${wpCliPhar}" search-replace '//${remoteDomain}' '//${localDomain}' --all-tables --skip-columns=guid --skip-plugins --skip-themes --path="${localPublicPath}" --allow-root 2>/dev/null || true`;
-          execSync(srCmd2, { encoding: 'utf8', shell: '/bin/bash', stdio: 'pipe' });
-
-          sendProgress({ stage: 'search-replace', progress: 95, message: 'Search-replace complete!' });
-        } catch (srError: any) {
-          // Return error instead of continuing silently
-          // Restore wp-config first
-          if (wpConfigBackup) {
-            fs.writeFileSync(wpConfigPath, wpConfigBackup);
-          }
-          if (fs.existsSync(wpConfigBackupPath)) {
-            fs.unlinkSync(wpConfigBackupPath);
-          }
-          return { success: false, error: `Search-replace failed: ${srError.message}` };
+          sendProgress({ stage: 'search-replace', progress: 96, message: 'Search-replace complete!' });
         } finally {
           // Always restore wp-config.php
           if (wpConfigBackup) {
             fs.writeFileSync(wpConfigPath, wpConfigBackup);
           }
-          // Remove backup file
           if (fs.existsSync(wpConfigBackupPath)) {
             fs.unlinkSync(wpConfigBackupPath);
           }
         }
 
-        // Cleanup
+        // Cleanup (keep the pre-pull backup until the next pull)
         try {
           fs.unlinkSync(dbDumpPath);
-          execSync(`${sshCmd} ${envInfo.sshUser}@${envInfo.sshHost} "rm -f ${remoteDbPath}"`, { stdio: 'pipe' });
+          await runCommand(sync, 'ssh', sshArgs(envInfo, `rm -f ${remoteDbPath}`));
         } catch (e) {}
       }
 
+      recordSync(localSiteId, 'pull', envInfo.envType, Date.now() - startedAt);
       sendProgress({ stage: 'done', progress: 100, message: 'Pull complete!' });
+      notify('Kinsta Sync', `Pull complete for ${site.name || site.domain}`);
       return { success: true };
 
     } catch (error: any) {
+      if (error instanceof CancelledError) {
+        return { success: false, cancelled: true, error: 'Sync cancelled' };
+      }
+      notify('Kinsta Sync', `Pull failed for ${site.name || site.domain}`);
       return { success: false, error: error.message };
+    } finally {
+      activeSyncs.delete(localSiteId);
     }
   });
 
   // Push to Kinsta
-  ipcMain.handle('kinsta:push', async (event: IpcMainInvokeEvent, localSiteId: string, site: any, envInfo: EnvironmentInfo, options: { includeUploads?: boolean; includeDatabase?: boolean }) => {
+  ipcMain.handle('kinsta:push', async (event: IpcMainInvokeEvent, localSiteId: string, site: SiteInfo, envInfo: EnvironmentInfo, options: SyncOptions) => {
     const links = loadSiteLinks();
     const link = links[localSiteId];
 
     if (!link) {
       return { success: false, error: 'Site not linked to Kinsta' };
+    }
+    if (activeSyncs.has(localSiteId)) {
+      return { success: false, error: 'A sync is already running for this site' };
     }
 
     // Security: Validate environment data before using in shell commands
@@ -536,92 +910,130 @@ export default function (context: AddonMainContext): void {
       return { success: false, error: 'Invalid environment configuration.' };
     }
 
+    // Pre-flight: database sync needs the local site running (MySQL socket)
+    const socketPath = getMysqlSocketPath(localSiteId);
+    if (options.includeDatabase && !fs.existsSync(socketPath)) {
+      return { success: false, error: 'The local site must be running for database sync. Start the site in Local and try again.' };
+    }
+
     const sendProgress = (progress: SyncProgress) => {
       event.sender.send('kinsta:syncProgress', progress);
     };
 
-    try {
-      const localPublicPath = path.join(expandPath(site.path), 'app', 'public');
-      const sshCmd = `ssh -p ${envInfo.sshPort} -o StrictHostKeyChecking=accept-new`;
-      const remotePath = `${envInfo.sshUser}@${envInfo.sshHost}:~/public`;
+    const sync: ActiveSync = { cancelled: false, child: null };
+    activeSyncs.set(localSiteId, sync);
+    const startedAt = Date.now();
 
-      // Build exclude args
-      let excludeArgs = EXCLUDE_PATTERNS.map(p => `--exclude='${p}'`).join(' ');
+    const localPublicPath = path.join(expandPath(site.path), 'app', 'public');
+    const sshCommandForRsync = `ssh -p ${envInfo.sshPort} -o StrictHostKeyChecking=accept-new`;
+    const remoteHost = `${envInfo.sshUser}@${envInfo.sshHost}`;
+
+    try {
+      const excludeArgs = EXCLUDE_PATTERNS.map(p => `--exclude=${p}`);
       if (!options.includeUploads) {
-        excludeArgs += ` --exclude='wp-content/uploads/'`;
+        excludeArgs.push('--exclude=wp-content/uploads/');
       }
 
-      // 1. Sync files
-      sendProgress({ stage: 'files', progress: 10, message: 'Syncing files to Kinsta...' });
+      // 1. Safety net: back up the remote database before any destructive step.
+      //    Stored in the remote home dir (outside ~/public, not web-accessible).
+      sendProgress({ stage: 'backup', progress: 3, message: 'Backing up remote database...' });
+      await runCommand(sync, 'ssh', sshArgs(envInfo, 'cd ~/public && wp db export ~/kinsta-sync-pre-push-backup.sql'));
 
-      // Escape spaces in local path for shell
-      const escapedLocalPath = localPublicPath.replace(/ /g, '\\ ');
-      const rsyncCmd = `rsync -az --delete ${excludeArgs} -e "${sshCmd}" ${escapedLocalPath}/ ${envInfo.sshUser}@${envInfo.sshHost}:~/public/`;
-      execSync(rsyncCmd, { encoding: 'utf8', shell: '/bin/bash', stdio: 'pipe' });
+      // 2. Sync files (live progress, flags adapted to the rsync version)
+      sendProgress({ stage: 'files', progress: 8, message: 'Syncing files to Kinsta...' });
+
+      const rsync = resolveRsync();
+      await runCommand(sync, rsync.bin, [
+        '-az', '--delete', ...rsyncProgressArgs(rsync), ...excludeArgs,
+        '-e', sshCommandForRsync,
+        `${localPublicPath}/`,
+        `${remoteHost}:~/public/`,
+      ], {
+        onStdout: makeRsyncProgressParser(rsync, (pct) => {
+          // Files = 8–50% of the overall push
+          const overall = 8 + Math.round(pct * 0.42);
+          sendProgress({ stage: 'files', progress: overall, message: `Syncing files to Kinsta... ${pct}%` });
+        }),
+      });
 
       sendProgress({ stage: 'files', progress: 50, message: 'Files synced!' });
 
-      // 2. Database (if requested)
+      // 3. Database (if requested)
       if (options.includeDatabase) {
-        sendProgress({ stage: 'database', progress: 60, message: 'Exporting local database...' });
-
+        const db = getDbCredentials(site);
         const dbDumpPath = path.join(TEMP_DIR, `${localSiteId}-local.sql`);
         const remoteDbPath = '/tmp/kinsta-local-import.sql';
 
-        // Export local DB
-        const localAppSupport = path.join(os.homedir(), 'Library', 'Application Support', 'Local');
-        const socketPath = path.join(localAppSupport, 'run', localSiteId, 'mysql', 'mysqld.sock');
-
-        if (fs.existsSync(socketPath)) {
-          const localServicesPath = path.join(localAppSupport, 'lightning-services');
-          const mysqlDirs = fs.readdirSync(localServicesPath).filter(d => d.startsWith('mysql-') || d.startsWith('mariadb-')).sort().reverse();
-          const arch = process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
-          let mysqldumpBin = path.join(localServicesPath, mysqlDirs[0], 'bin', arch, 'bin', 'mysqldump');
-
-          if (!fs.existsSync(mysqldumpBin)) {
-            mysqldumpBin = path.join(localServicesPath, mysqlDirs[0], 'bin', 'darwin-arm64', 'bin', 'mysqldump');
-          }
-
-          const exportCmd = `"${mysqldumpBin}" -uroot -proot --socket="${socketPath}" local > "${dbDumpPath}"`;
-          execSync(exportCmd, { encoding: 'utf8', shell: '/bin/bash', stdio: 'pipe' });
+        const mysqldumpBin = findServiceBinary(['mysql-', 'mariadb-'], 'mysqldump');
+        if (!mysqldumpBin) {
+          throw new Error('Could not find mysqldump in Local\'s lightning-services');
         }
 
+        sendProgress({ stage: 'database', progress: 55, message: 'Exporting local database...' });
+        await runCommand(sync, mysqldumpBin, [
+          `-u${db.user}`, `-p${db.password}`, `--socket=${socketPath}`, db.database,
+        ], { stdoutFile: dbDumpPath });
+
+        sendProgress({ stage: 'database', progress: 65, message: 'Uploading database...' });
+        await runCommand(sync, 'scp', [
+          '-P', envInfo.sshPort,
+          '-o', 'StrictHostKeyChecking=accept-new',
+          dbDumpPath,
+          `${remoteHost}:${remoteDbPath}`,
+        ]);
+
         sendProgress({ stage: 'database', progress: 75, message: 'Importing database on Kinsta...' });
+        await runCommand(sync, 'ssh', sshArgs(envInfo, `cd ~/public && wp db import ${remoteDbPath}`));
 
-        // Upload and import
-        execSync(`scp -P ${envInfo.sshPort} -o StrictHostKeyChecking=accept-new "${dbDumpPath}" ${envInfo.sshUser}@${envInfo.sshHost}:${remoteDbPath}`, { encoding: 'utf8', stdio: 'pipe' });
-        execSync(`${sshCmd} ${envInfo.sshUser}@${envInfo.sshHost} "cd ~/public && wp db import ${remoteDbPath}"`, { encoding: 'utf8', stdio: 'pipe' });
+        sendProgress({ stage: 'search-replace', progress: 82, message: 'Running search-replace...' });
 
-        sendProgress({ stage: 'search-replace', progress: 85, message: 'Running search-replace...' });
-
-        // Search-replace URLs
         const localDomain = site.domain;
         const remoteDomain = envInfo.remoteDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        // MultiSite.No is the empty string, so truthiness is the correct check
+        const networkFlag = site.multiSite ? ' --network' : '';
+        const pairs = searchReplacePairs(localDomain, remoteDomain);
 
-        const srCmd = `${sshCmd} ${envInfo.sshUser}@${envInfo.sshHost} "cd ~/public && wp search-replace 'https://${localDomain}' 'https://${remoteDomain}' --all-tables --skip-columns=guid"`;
-        execSync(srCmd, { encoding: 'utf8', stdio: 'pipe' });
+        for (let i = 0; i < pairs.length; i++) {
+          const [from, to] = pairs[i];
+          sendProgress({ stage: 'search-replace', progress: 84 + i * 4, message: `Replacing ${from} → ${to}` });
+          await runCommand(sync, 'ssh', sshArgs(envInfo,
+            `cd ~/public && wp search-replace '${from}' '${to}' --all-tables --skip-columns=guid${networkFlag}`
+          ));
+        }
 
-        // Clear cache via API
+        // Clear cache via API (POST /sites/tools/clear-cache per Kinsta docs)
         const apiKeyForCache = getApiKey();
         if (apiKeyForCache) {
+          sendProgress({ stage: 'cache', progress: 97, message: 'Clearing Kinsta cache...' });
           try {
             const client = getKinstaClient(apiKeyForCache);
-            await client.post(`/sites/environments/${envInfo.envId}/clear-cache`);
-          } catch (e) {}
+            await client.post('/sites/tools/clear-cache', { environment_id: envInfo.envId });
+          } catch (e: any) {
+            // Non-fatal, but at least leave a trace this time
+            console.error('[Kinsta] Cache clear after push failed:', e.response?.data?.message || e.message);
+          }
         }
 
         // Cleanup
         try {
           fs.unlinkSync(dbDumpPath);
-          execSync(`${sshCmd} ${envInfo.sshUser}@${envInfo.sshHost} "rm -f ${remoteDbPath}"`, { stdio: 'pipe' });
+          await runCommand(sync, 'ssh', sshArgs(envInfo, `rm -f ${remoteDbPath}`));
         } catch (e) {}
       }
 
+      recordSync(localSiteId, 'push', envInfo.envType, Date.now() - startedAt);
       sendProgress({ stage: 'done', progress: 100, message: 'Push complete!' });
+      notify('Kinsta Sync', `Push complete for ${site.name || site.domain}`);
       return { success: true };
 
     } catch (error: any) {
+      if (error instanceof CancelledError) {
+        return { success: false, cancelled: true, error: 'Sync cancelled' };
+      }
+      notify('Kinsta Sync', `Push failed for ${site.name || site.domain}`);
       return { success: false, error: error.message };
+    } finally {
+      activeSyncs.delete(localSiteId);
     }
   });
 
@@ -630,5 +1042,16 @@ export default function (context: AddonMainContext): void {
     deleteApiKey();
     saveConfig({});
     return { success: true };
+  });
+}
+
+// Kinsta API client
+function getKinstaClient(apiKey: string): AxiosInstance {
+  return axios.create({
+    baseURL: KINSTA_API_BASE,
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    }
   });
 }

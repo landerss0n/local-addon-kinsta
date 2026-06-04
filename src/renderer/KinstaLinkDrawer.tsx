@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   PrimaryButton,
   TextButton,
@@ -135,11 +135,13 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onLinkComplete: (link: SiteLink) => void;
+  // Shortcut from the success view straight into the pull drawer
+  onStartPull?: () => void;
   site: any;
   isConnected: boolean;
 }
 
-const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, site, isConnected }) => {
+const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, onStartPull, site, isConnected }) => {
   const [apiKey, setApiKey] = useState('');
   const [companyId, setCompanyId] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
@@ -150,6 +152,20 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, si
   const [isLoadingSites, setIsLoadingSites] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [linkedSite, setLinkedSite] = useState<SiteLink | null>(null);
+  const searchWrapRef = useRef<HTMLDivElement>(null);
+
+  // Autofocus the search field once the site list is shown.
+  // InputSearch doesn't forward refs, so focus the inner <input> via a wrapper.
+  // Small delay lets the drawer's slide-in transition finish first.
+  useEffect(() => {
+    if (isOpen && connected && !isLoadingSites && kinstaSites.length > 0) {
+      const timer = setTimeout(() => {
+        searchWrapRef.current?.querySelector('input')?.focus();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, connected, isLoadingSites, kinstaSites.length]);
 
   // Sync connected state with prop
   useEffect(() => {
@@ -163,10 +179,12 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, si
     }
   }, [isOpen, connected]);
 
-  // Reset search when drawer closes
+  // Reset transient state when drawer closes
   useEffect(() => {
     if (!isOpen) {
       setSearchQuery('');
+      setLinkedSite(null);
+      setError(null);
     }
   }, [isOpen]);
 
@@ -238,6 +256,8 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, si
 
     if (result.success) {
       onLinkComplete(result.link);
+      // Stay open and show the success view instead of silently closing
+      setLinkedSite(result.link);
     } else {
       setError(result.error);
     }
@@ -342,7 +362,42 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, si
 
         {/* Content */}
         <div style={contentStyle}>
-          {!connected ? (
+          {linkedSite ? (
+            /* Success state — mirrors the sync drawer's complete view */
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              textAlign: 'center',
+            }}>
+              <div style={{
+                width: '80px',
+                height: '80px',
+                borderRadius: '50%',
+                backgroundColor: 'rgba(80, 192, 131, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '24px',
+              }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#50c083" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </div>
+              <Title size="m" style={{ marginBottom: '8px', color: '#50c083' }}>
+                Site Linked!
+              </Title>
+              <span style={{ opacity: 0.7, display: 'block', marginBottom: '8px' }}>
+                <strong>{site.name || site.domain}</strong> is now linked to{' '}
+                <strong>{linkedSite.kinstaSiteName}</strong>.
+              </span>
+              <span style={{ opacity: 0.5, fontSize: '13px' }}>
+                Pull to fetch files and database from Kinsta, or find all actions in the site's More menu.
+              </span>
+            </div>
+          ) : !connected ? (
             <>
               {/* Connect Form */}
               <p style={{ color: '#888', fontSize: '14px', marginBottom: '24px', lineHeight: 1.5 }}>
@@ -416,7 +471,7 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, si
                 ) : (
                   <>
                     {/* Search input */}
-                    <div style={{ marginBottom: '12px' }}>
+                    <div ref={searchWrapRef} style={{ marginBottom: '12px' }}>
                       <InputSearch
                         value={searchQuery}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
@@ -544,28 +599,41 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, si
 
         {/* Footer */}
         <div style={footerStyle}>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <TextButton onClick={onClose} style={{ flex: 1 }}>
-              Cancel
-            </TextButton>
-            {!connected ? (
-              <PrimaryButton
-                onClick={handleConnect}
-                disabled={isConnecting || !apiKey || !companyId}
-                style={{ flex: 1 }}
-              >
-                {isConnecting ? 'Connecting...' : 'Connect'}
-              </PrimaryButton>
-            ) : (
-              <PrimaryButton
-                onClick={handleLink}
-                disabled={isLinking || !selectedSiteId || isLoadingSites}
-                style={{ flex: 1 }}
-              >
-                {isLinking ? 'Linking...' : 'Link Site'}
-              </PrimaryButton>
-            )}
-          </div>
+          {linkedSite ? (
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <TextButton onClick={onClose} style={{ flex: 1 }}>
+                Close
+              </TextButton>
+              {onStartPull && (
+                <PrimaryButton onClick={onStartPull} style={{ flex: 1 }}>
+                  Pull from Kinsta
+                </PrimaryButton>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <TextButton onClick={onClose} style={{ flex: 1 }}>
+                Cancel
+              </TextButton>
+              {!connected ? (
+                <PrimaryButton
+                  onClick={handleConnect}
+                  disabled={isConnecting || !apiKey || !companyId}
+                  style={{ flex: 1 }}
+                >
+                  {isConnecting ? 'Connecting...' : 'Connect'}
+                </PrimaryButton>
+              ) : (
+                <PrimaryButton
+                  onClick={handleLink}
+                  disabled={isLinking || !selectedSiteId || isLoadingSites}
+                  style={{ flex: 1 }}
+                >
+                  {isLinking ? 'Linking...' : 'Link Site'}
+                </PrimaryButton>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </>

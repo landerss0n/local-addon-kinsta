@@ -136,14 +136,17 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
   const [includeDatabase, setIncludeDatabase] = useState(true);
   const [includeUploads, setIncludeUploads] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen && siteLink) {
       loadEnvironments();
+      loadLastSynced();
     }
   }, [isOpen, siteLink]);
 
@@ -170,6 +173,18 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
         setSelectedEnvId(result.environments[0].id);
       }
     }
+  };
+
+  // The stored link carries lastPullAt/lastPushAt timestamps
+  const loadLastSynced = async () => {
+    const link = await ipcRenderer.invoke('kinsta:getSiteLink', site.id);
+    const ts = mode === 'pull' ? link?.lastPullAt : link?.lastPushAt;
+    setLastSyncedAt(ts || null);
+  };
+
+  const handleCancel = async () => {
+    setIsCancelling(true);
+    await ipcRenderer.invoke('kinsta:cancelSync', site.id);
   };
 
   const getSelectedEnvInfo = (): EnvironmentInfo | null => {
@@ -216,9 +231,13 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
       includeDatabase
     });
 
-    if (!result.success) {
-      setError(result.error);
+    if (result.success) {
+      loadLastSynced();
+    } else {
+      // Cancelled syncs return to the form without an error banner
+      setError(result.cancelled ? null : result.error);
       setIsSyncing(false);
+      setIsCancelling(false);
       setSyncProgress(null);
     }
   };
@@ -227,6 +246,7 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
     if (!isSyncing) {
       setError(null);
       setIsComplete(false);
+      setIsCancelling(false);
       setSyncProgress(null);
       setShowConfirmModal(false);
       onClose();
@@ -425,6 +445,16 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
                 </div>
               </div>
 
+              {lastSyncedAt && (
+                <div style={{
+                  marginTop: '12px',
+                  fontSize: '12px',
+                  opacity: 0.6,
+                }}>
+                  Last {isPush ? 'pushed' : 'pulled'}: {new Date(lastSyncedAt).toLocaleString()}
+                </div>
+              )}
+
               {error && (
                 <div style={{
                   marginTop: '16px',
@@ -434,6 +464,10 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
                   borderRadius: '8px',
                   color: '#d04d5c',
                   fontSize: '13px',
+                  whiteSpace: 'pre-wrap',
+                  fontFamily: 'monospace',
+                  maxHeight: '160px',
+                  overflowY: 'auto',
                 }}>
                   {error}
                 </div>
@@ -471,6 +505,11 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
               </span>
               <div style={{ width: '100%', maxWidth: '300px' }}>
                 <ProgressBar progress={syncProgress?.progress || 0} />
+              </div>
+              <div style={{ marginTop: '24px' }}>
+                <TextButton onClick={handleCancel} disabled={isCancelling}>
+                  {isCancelling ? 'Cancelling...' : 'Cancel'}
+                </TextButton>
               </div>
             </div>
           )}

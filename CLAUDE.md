@@ -24,26 +24,29 @@ Both modules `export default function (context) {...}` — Local passes a `conte
 ### Main Process (`src/main/index.ts`)
 - Handles IPC communication with renderer
 - Manages Kinsta API calls (axios — `context.request` was removed in Local 8.0)
-- Executes rsync/SSH commands for file sync (`child_process` is allowed per docs)
-- Handles database export/import via MySQL
-- Runs WP-CLI search-replace for URL replacements
+- Runs rsync/SSH/mysql via **async `spawn` with arg arrays** (`runCommand` helper) — never `execSync` (blocks Local's main process) and never shell strings (injection surface). `child_process` is allowed per docs.
+- Real rsync progress via `--info=progress2` parsing; `mysqldump`/`mysql` stream via stdout/stdin file pipes
+- **Cancellable syncs**: one `ActiveSync` per site in `activeSyncs`; `kinsta:cancelSync` kills the current child; every step rejects with `CancelledError` after cancellation
+- **Safety backups before destructive steps**: pull backs up local DB to tmp (`<siteId>-pre-pull-backup.sql`), push exports remote DB to `~/kinsta-sync-pre-push-backup.sql` (home dir, outside `~/public`)
+- Pre-flight check: DB sync requires the local site running (MySQL socket exists) — fails fast with a clear message
+- DB credentials from `site.mysql.{database,user,password}` (fallback root/root/local); multisite adds `--network` to search-replace (`MultiSite.No` is the empty string — truthiness check)
+- Search-replace covers `https://`, `http://` and protocol-relative `//` URLs in both directions
 - Stores API keys encrypted via `context.electron.safeStorage`
+- Desktop notifications via `context.notifier.notify()` on sync complete/fail
+- `siteDeleted` action hook removes stale site links
 
 ### Renderer Process (`src/renderer/`)
-- `index.tsx` — Registers hooks with Local (drawer host + More-menu filter + preferences)
-- `KinstaSitePanel.tsx` — `KinstaDrawerHost`: invisible component mounted via `SiteInfo_TabNav_Items`; owns the drawers, keeps a module-level link-state cache, and listens for `kinsta:action` events dispatched by the More-menu items
-- `KinstaLinkDrawer.tsx` — Drawer for connecting API and linking sites
-- `KinstaSyncDrawer.tsx` — Drawer for pull/push sync operations
+- `index.tsx` — Registers hooks with Local (drawer host + Kinsta page route + More-menu navigation + preferences)
+- `KinstaPage.tsx` — The add-on's home: a dedicated page under the site's More tab (route `/main/site-info/:siteId/kinsta`). Shows link status, last pulled/pushed, and Pull/Push/Link/Unlink actions. Title bar says "Kinsta" (docs requirement for new tabs).
+- `KinstaSitePanel.tsx` — `KinstaDrawerHost`: invisible component mounted via `SiteInfo_TabNav_Items`; owns the drawers and listens for `kinsta:action` events
+- `KinstaLinkDrawer.tsx` — Drawer for connecting API and linking sites (success view with "Pull from Kinsta" shortcut after linking)
+- `KinstaSyncDrawer.tsx` — Drawer for pull/push sync operations (cancel button, last-synced info)
 - `KinstaSettings.tsx` — Preferences panel for API configuration
 
-### UI entry points (all native — no custom toolbar UI)
-All actions live in Local's native **More** menu (`siteInfoMoreMenu` filter):
-- Unlinked site → "Link to Kinsta"
-- Linked site → "Pull from Kinsta", "Push to Kinsta", "Unlink from Kinsta"
-
-The filter is synchronous, so it reads a module-level cache (`getLinkState`) populated by `KinstaDrawerHost` on mount. Menu items dispatch `kinsta:action` CustomEvents; the host opens the right drawer (with link-drawer fallback if unlinked).
-
-**Known limitation:** after linking/unlinking, the More menu items update on Local's next re-render of the site view (e.g. tab switch) — the filter result is computed at render time and we can't force Local to re-render.
+### UI architecture (native pattern per "Giving your add-on a home")
+- **More menu** holds ONE navigation item ("Kinsta") → `events.send('goToRoute', '/main/site-info/${site.id}/kinsta')`. Per Local's docs and their own Volumes example, More is for navigation to add-on tabs — not raw actions.
+- **The Kinsta page** is registered via the `routes[site-info]` content hook. Local renders the hook's result inside its react-router `<Switch>` and passes `{ routeChildrenProps }` (contains `site`, `siteStatus`, `params`, ...). Return a real `<Route>` from Local's shared `react-router-dom` with an explicit `path` — Switch matches on the child's `path` prop, and a pathless element would swallow the overview fallback route below it.
+- **Event flow:** page/menu dispatch `kinsta:action` (link/pull/push/unlink) → `KinstaDrawerHost` opens the right drawer (link-drawer fallback if unlinked). Host dispatches `kinsta:state-changed` after link/unlink/drawer-close → page refreshes its data. No re-render hacks needed since the menu item is static.
 
 ## Hooks API (via `context.hooks`)
 
@@ -55,8 +58,10 @@ Modeled on WordPress' Plugin API. Three types:
 
 ### Hooks we use
 - `SiteInfo_TabNav_Items` (content) — mounts the invisible `KinstaDrawerHost` (no visible UI)
-- `siteInfoMoreMenu` (filter) — Link/Pull/Push/Unlink items in the site's native More menu (Local only reads `label` + `click` from each item)
+- `routes[site-info]` (content) — registers the Kinsta page route inside Local's site-info `<Switch>`
+- `siteInfoMoreMenu` (filter) — single "Kinsta" navigation item (Local only reads `label` + `click` from each item)
 - `preferencesMenuItems` (filter) — Kinsta section in Preferences
+- `siteDeleted` (action, main process) — removes the stored site link when a site is deleted in Local
 
 ### Other useful hooks (from docs)
 - Content: `SiteInfoOverview:Before`, `SiteInfoUtilities`, `SiteInfo_Top_TopRight` (site, siteStatus), `SitesSidebar_SitesSidebarSites`, `routes[site-info]`, `stylesheets`
@@ -111,7 +116,12 @@ Our approach (native More-menu items + drawers) is the officially documented pat
 npm run build:main      # Compile TypeScript (main process)
 npm run build:renderer  # Bundle React with webpack (renderer)
 npm run build           # Both
-# Restart Local after building to load changes
+```
+
+**Reload workflow:** the add-on's main process watches `lib/renderer/` (`watchRendererBundle`) and reloads Local's windows automatically when webpack rewrites the bundle — renderer changes hot-reload in ~1s with no restart. Main-process changes still require a full Local restart (Electron can't swap the main process):
+
+```bash
+osascript -e 'quit app "Local"' && sleep 3 && open -a "Local"
 ```
 
 ## UI Components
@@ -134,13 +144,11 @@ Two versions of the official Kinsta icon are embedded as React components:
 
 ## Data Storage
 
-Config stored in `~/.kinsta-sync/`:
+Config stored in `<userDataPath>/addons-data/kinsta-sync/` (from `context.environment.userDataPath`; legacy `~/.kinsta-sync/` is auto-migrated on first run):
 - `config.json` — Company ID
 - `.api-key.enc` — Encrypted API key
-- `sites.json` — Site links (Local site ID → Kinsta site, not environment)
-- `tmp/` — Temporary SQL dumps
-
-(Note: `context.environment.userDataPath` would be the more idiomatic location if we ever migrate.)
+- `sites.json` — Site links (Local site ID → Kinsta site, not environment) + `lastPullAt`/`lastPushAt` timestamps
+- `tmp/` — Temporary SQL dumps + pre-pull DB backups
 
 ## Site Linking
 
@@ -154,33 +162,40 @@ The link drawer includes:
 ## Sync Process
 
 ### Pull
-1. rsync files from Kinsta (excluding system files)
-2. Export database on Kinsta via SSH + WP-CLI
-3. Download SQL dump via SCP
-4. Import to Local's MySQL via socket
-5. Run WP-CLI search-replace (modifies wp-config.php temporarily for socket)
-6. Cleanup temp files
+1. Pre-flight: site running? (socket check)
+2. rsync files from Kinsta (excluding system files, real progress)
+3. Backup local DB to tmp (safety net)
+4. Export database on Kinsta via SSH + WP-CLI
+5. Download SQL dump via SCP
+6. Import to Local's MySQL via socket (stdin pipe)
+7. Run WP-CLI search-replace ×3 passes (https/http/protocol-relative; modifies wp-config.php temporarily for socket)
+8. Cleanup temp files (pre-pull backup is kept until next pull)
 
 ### Push
 1. Confirmation modal for production pushes
-2. rsync files to Kinsta (with --delete)
-3. Export Local database via mysqldump
-4. Upload SQL dump via SCP
-5. Import on Kinsta via SSH + WP-CLI
-6. Run search-replace on Kinsta
-7. Clear Kinsta cache via API
-8. Cleanup temp files
+2. Pre-flight: site running? (socket check)
+3. Backup remote DB to `~/kinsta-sync-pre-push-backup.sql` on Kinsta
+4. rsync files to Kinsta (with --delete, real progress)
+5. Export Local database via mysqldump (stdout pipe)
+6. Upload SQL dump via SCP
+7. Import on Kinsta via SSH + WP-CLI
+8. Run search-replace ×3 passes on Kinsta
+9. Clear Kinsta cache via API
+10. Cleanup temp files
 
 ## Important Notes
 
-- Local uses MySQL socket at `~/Library/Application Support/Local/run/{siteId}/mysql/mysqld.sock`
-- PHP/MySQL binaries are in `~/Library/Application Support/Local/lightning-services/`
-- WP-CLI phar is at `/Applications/Local.app/Contents/Resources/extraResources/bin/wp-cli/wp-cli.phar`
+- All Local-installation paths derive from the Context API — never hardcode:
+  - MySQL socket: `<userDataPath>/run/{siteId}/mysql/mysqld.sock` (`getMysqlSocketPath`)
+  - PHP/MySQL binaries: `<userDataPath>/lightning-services/` (`findServiceBinary`, arch-aware)
+  - WP-CLI phar: resolved from `appPath`/`process.resourcesPath` candidates (`findWpCliPhar`)
 - Search-replace must use `--skip-columns=guid` to avoid breaking WordPress
-- wp-config.php is temporarily modified to use socket path, then restored
+- wp-config.php is temporarily modified to use socket path, then restored (finally-block + crash recovery via `.kinsta-sync-bak`)
 - "Live" environment renamed to "Production" throughout UI
 
 ## Known Issues / Workarounds
+
+- **macOS rsync is not GNU rsync**: newer macOS ships openrsync (`/usr/bin/rsync`), older ships rsync 2.6.9 — neither supports `--info=progress2`. `resolveRsync()` capability-probes flags (`rsync <flag> --version`, exit 0 = supported) and prefers Homebrew rsync when installed. openrsync gets `--progress` but emits no `to-check=` lines, so live file-% is unavailable — stage progress still advances. `brew install rsync` gives full live progress.
 
 - `Button` component from local-components with `privateOptions` causes React error #130
 - `FlySelect` with `optionsLoader` doesn't work reliably — use static `options` instead
