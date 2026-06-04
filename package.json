@@ -9,7 +9,7 @@
     "local-addon"
   ],
   "slug": "local-addon-kinsta",
-  "bgColor": "#5333ed",
+  "bgColor": "#181516",
   "icon": "icon.svg",
   "engines": {
     "local-by-flywheel": "^5.0.0"
