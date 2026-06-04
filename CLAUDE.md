@@ -30,11 +30,20 @@ Both modules `export default function (context) {...}` — Local passes a `conte
 - Stores API keys encrypted via `context.electron.safeStorage`
 
 ### Renderer Process (`src/renderer/`)
-- `index.tsx` — Registers hooks with Local
-- `KinstaSitePanel.tsx` — Toolbar button with dropdown menu
+- `index.tsx` — Registers hooks with Local (drawer host + More-menu filter + preferences)
+- `KinstaSitePanel.tsx` — `KinstaDrawerHost`: invisible component mounted via `SiteInfo_TabNav_Items`; owns the drawers, keeps a module-level link-state cache, and listens for `kinsta:action` events dispatched by the More-menu items
 - `KinstaLinkDrawer.tsx` — Drawer for connecting API and linking sites
 - `KinstaSyncDrawer.tsx` — Drawer for pull/push sync operations
 - `KinstaSettings.tsx` — Preferences panel for API configuration
+
+### UI entry points (all native — no custom toolbar UI)
+All actions live in Local's native **More** menu (`siteInfoMoreMenu` filter):
+- Unlinked site → "Link to Kinsta"
+- Linked site → "Pull from Kinsta", "Push to Kinsta", "Unlink from Kinsta"
+
+The filter is synchronous, so it reads a module-level cache (`getLinkState`) populated by `KinstaDrawerHost` on mount. Menu items dispatch `kinsta:action` CustomEvents; the host opens the right drawer (with link-drawer fallback if unlinked).
+
+**Known limitation:** after linking/unlinking, the More menu items update on Local's next re-render of the site view (e.g. tab switch) — the filter result is computed at render time and we can't force Local to re-render.
 
 ## Hooks API (via `context.hooks`)
 
@@ -45,8 +54,8 @@ Modeled on WordPress' Plugin API. Three types:
 - **Actions** — `hooks.addAction(name, cb)`: no return value needed.
 
 ### Hooks we use
-- `SiteInfo_TabNav_Items` (content) — Kinsta button in the site toolbar
-- `SiteInfoOverview` (content) — link panel on site overview
+- `SiteInfo_TabNav_Items` (content) — mounts the invisible `KinstaDrawerHost` (no visible UI)
+- `siteInfoMoreMenu` (filter) — Link/Pull/Push/Unlink items in the site's native More menu (Local only reads `label` + `click` from each item)
 - `preferencesMenuItems` (filter) — Kinsta section in Preferences
 
 ### Other useful hooks (from docs)
@@ -75,7 +84,13 @@ Integrating Kinsta into Local's Connect → "Hosting platforms" UI is **not poss
 - Host adapters are deeply coupled to WP Engine's own systems (WPE OAuth via Hub, `$root.$flywheel.user`, magic sync backend, internal IPC channels). Connect is first-party only by design (Local is owned by WP Engine).
 - Theoretical hack: `RootStore.getInstance().$connect.$hostAdapters.registerHostAdapter(...)` is reachable from the renderer (typed `any` in `@getflywheel/local/renderer`), but requires reverse-engineering the whole adapter interface incl. auth — would break on every Local update. **Don't.**
 
-Our approach (toolbar button + drawers) is the officially documented pattern for third-party hosting integrations.
+The same applies to the **Pull/Push footer bar** (bottom-right on every site, next to Live Link) — locked at three levels:
+
+1. **Footer buttons**: rendered with zero hooks (scanned the whole component region: no `doContent`/`applyFilters`). Clicks just navigate to internal routes `…/pull-connectdrawer` / `…/push-connectdrawer`.
+2. **The connect drawer** ("Push from Local" sign-in view): the host cards are hardcoded — it does NOT iterate the adapter registry, it explicitly creates exactly two cards (`hostName:"WP Engine"`, `hostName:"Flywheel"`) plus a hardcoded WP Migrate promo. Scanned ±30k chars around the drawer implementation: zero hooks (only unrelated `allowedSiteOverlayStatuses` nearby). So even the registerHostAdapter hack would never surface here.
+3. **The sync engine** (main process): class-per-host with no generic plug-in surface — `/main/magicSync/{WPE,Flywheel}{Pull,Push}Service.js`, `ConnectManifest{Wpe,Flywheel}Service.js`. "Magic Sync" (manifest diffing) talks directly to WP Engine/Flywheel Hub APIs and infrastructure; there is no backend path for a third host.
+
+Our approach (native More-menu items + drawers) is the officially documented pattern for third-party hosting integrations and as close to native as the API allows.
 
 ## Official design rules (build.localwp.com)
 
@@ -106,18 +121,6 @@ Two versions of the official Kinsta icon are embedded as React components:
 - `KinstaIconLight` — light/beige background (#F9F5F3) — for dark theme
 - `KinstaIconDark` — dark background (#181516) — for light theme
 - `KinstaIcon` — theme-aware wrapper that auto-selects based on Local's theme
-
-### Button Styling
-Toolbar button styled to match Local's pill-shaped buttons:
-```css
-border-radius: 50px;
-border: 1px solid #51bb7b;
-color: #51bb7b;
-font-family: "Museo Sans Rounded";
-font-size: 14px;
-font-weight: 500;
-height: 32px;
-```
 
 ### Local Components Used
 - `PrimaryButton`, `TextButton` — action buttons
