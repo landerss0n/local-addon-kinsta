@@ -133,6 +133,18 @@ Tests live in `src/main/index.test.ts` (excluded from the tsc build). The `@getf
 osascript -e 'quit app "Local"' && sleep 3 && open -a "Local"
 ```
 
+## UI verification via CDP (ALWAYS when building UI)
+
+**Always verify UI changes yourself** with CDP + Playwright before asking Lucas to look — iterate on screenshots until it looks right:
+
+1. Relaunch Local with the debug port: `osascript -e 'quit app "Local"' && sleep 3 && open -a "Local" --args --remote-debugging-port=9222`
+2. Connect with playwright-core (`connectOverCDP('http://localhost:9222')`) — scratch project lives in `/tmp/pw-local` (recreate with `npm i playwright-core` if gone)
+3. Find the page whose URL includes `app.html`, navigate via `location.hash = '#/main/site-info/<siteId>'`, open add-on screens by dispatching `kinsta:action` CustomEvents (e.g. `{action: 'push', siteId}`)
+4. `page.screenshot()` (use `clip` for detail crops) and Read the image; `page.evaluate()` to measure computed styles/heights when debugging layout
+5. Renderer changes hot-reload (~1s after `npm run build:renderer`) — no restart between iterations; main-process changes need the restart in step 1
+
+**HARD RULE: never trigger actual pulls/pushes, confirm dialogs, unlink, disconnect, or any destructive action — only open screens, inspect DOM, screenshot.** The read-only preview dry-run that runs when the push screen opens is fine. Test site: GBD Shop = `heaKB3eQ3`.
+
 ## UI Components
 
 ### Kinsta Icons
@@ -209,7 +221,6 @@ The link drawer includes:
 - **Preferences Apply button can't be hidden via the API**: every add-on settings section gets Local's Apply footer (`AddonSettingsItem` has no `noApply`, though Local's own "Connected accounts" page uses an internal `noApply` flag). The wrapper does pass an undocumented `setApplyButtonDisabled(bool)` prop for dirty-state forms. We replicate `noApply` in `KinstaSettings` by injecting `[class*="SettingsPane_Footer"] { display: none; }` while mounted (removed on unmount; substring match survives CSS Modules hash changes).
 - **FlyModal fullscreen gotchas**: (1) `overlayClassName` REPLACES FlyModal's overlay class (you lose the fixed backdrop/centering/z-index) — only pass `className`, which is *appended* to their `.FlyModal` content class. (2) FlyModal styles its direct child div via `.FlyModal > div { max-height: 93vh; padding: 60px; overflow-y: auto }` — must be overridden (`!important`) for fullscreen layouts.
 - **VirtualTable `cellRenderer`**: returning `false` renders an EMPTY cell — the docs comment says "false to bypass and use default" but the code does `null != r ? r : children`. Return `null`/`undefined`/`args.children` for the default rendering (first-party code returns `null`).
-- **UI verification via CDP**: relaunch Local with `open -a "Local" --args --remote-debugging-port=9222`, then drive it with playwright-core `connectOverCDP` (scratch setup in /tmp/pw-local) — navigate via `location.hash = '#/main/site-info/<siteId>/...'` and dispatch `kinsta:action` CustomEvents. NEVER trigger actual pulls/pushes or destructive actions — only open screens, inspect DOM, screenshot.
 - `Button` component from local-components with `privateOptions` causes React error #130
 - `FlySelect` with `optionsLoader` doesn't work reliably — use static `options` instead
 - `<style>` tags in JSX render as text — use inline styles instead
