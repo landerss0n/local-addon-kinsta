@@ -369,11 +369,14 @@ interface RunOptions {
   // Called for every stdout chunk (e.g. rsync progress parsing)
   onStdout?: (chunk: string) => void;
   env?: NodeJS.ProcessEnv;
+  // Extra exit codes to treat as success (e.g. rsync 23/24 = partial transfer).
+  // The caller can inspect the resolved { code, stderr } to warn about them.
+  okCodes?: number[];
 }
 
 // Spawn without a shell (no injection surface), collect stderr for real error
 // messages, and register the child so the sync can be cancelled.
-function runCommand(sync: ActiveSync, cmd: string, args: string[], opts: RunOptions = {}): Promise<void> {
+function runCommand(sync: ActiveSync, cmd: string, args: string[], opts: RunOptions = {}): Promise<{ code: number; stderr: string }> {
   if (sync.cancelled) return Promise.reject(new CancelledError());
 
   return new Promise((resolve, reject) => {
@@ -418,14 +421,25 @@ function runCommand(sync: ActiveSync, cmd: string, args: string[], opts: RunOpti
       settled = true;
       if (sync.cancelled) {
         reject(new CancelledError());
-      } else if (code === 0) {
-        resolve();
+      } else if (code === 0 || (code !== null && opts.okCodes?.includes(code))) {
+        resolve({ code: code ?? 0, stderr: stderrTail });
       } else {
         const detail = stderrTail.trim().split('\n').slice(-5).join('\n');
         reject(new Error(`${path.basename(cmd)} exited with code ${code}${detail ? `:\n${detail}` : ''}`));
       }
     });
   });
+}
+
+// Human-readable warning for an rsync partial transfer (exit 23/24), or null
+// for a clean run. Typical cause: filenames in a legacy encoding (Latin-1 åäö)
+// that macOS refuses ("Illegal byte sequence") — fixable only by renaming the
+// files on the server.
+function describePartialTransfer(result: { code: number; stderr: string }): string | null {
+  if (result.code === 0) return null;
+  const failed = (result.stderr.match(/failed:|cannot /g) || []).length;
+  console.warn('[Kinsta] rsync partial transfer (code', result.code, '):', result.stderr.slice(-2000));
+  return `${failed || 'Some'} file(s) were skipped — usually filenames in a legacy encoding (e.g. Latin-1 åäö) that macOS cannot store. Rename those files on the server to fix. Everything else synced.`;
 }
 
 function sshArgs(envInfo: EnvironmentInfo, remoteCmd: string): string[] {
@@ -841,20 +855,25 @@ export default function (context: AddonMainContext): void {
       sendProgress({ stage: 'files', progress: 5, message: 'Syncing files from Kinsta...' });
 
       const rsync = resolveRsync();
-      await runCommand(sync, rsync.bin, [
+      const rsyncResult = await runCommand(sync, rsync.bin, [
         '-az', ...rsyncProgressArgs(rsync), ...excludeArgs,
         '-e', sshCommandForRsync,
         `${remoteHost}:~/public/`,
         `${localPublicPath}/`,
       ], {
+        // 23/24 = partial transfer (e.g. legacy non-UTF-8 filenames that
+        // macOS can't store, or files vanishing on a live server) — warn
+        // instead of failing the whole sync.
+        okCodes: [23, 24],
         onStdout: makeRsyncProgressParser(rsync, (pct) => {
           // Files = 5–50% of the overall pull
           const overall = 5 + Math.round(pct * 0.45);
           sendProgress({ stage: 'files', progress: overall, message: `Syncing files from Kinsta... ${pct}%` });
         }),
       });
+      const fileWarning = describePartialTransfer(rsyncResult);
 
-      sendProgress({ stage: 'files', progress: 50, message: 'Files synced!' });
+      sendProgress({ stage: 'files', progress: 50, message: fileWarning ? 'Files synced (some skipped)' : 'Files synced!' });
 
       // 2. Database (if requested)
       if (options.includeDatabase) {
@@ -957,9 +976,11 @@ export default function (context: AddonMainContext): void {
       }
 
       recordSync(localSiteId, 'pull', envInfo.envType, Date.now() - startedAt);
-      sendProgress({ stage: 'done', progress: 100, message: 'Pull complete!' });
-      notify('Kinsta Sync', `Pull complete for ${site.name || site.domain}`);
-      return { success: true };
+      sendProgress({ stage: 'done', progress: 100, message: fileWarning ? `Pull complete — ${fileWarning}` : 'Pull complete!' });
+      notify('Kinsta Sync', fileWarning
+        ? `Pull complete for ${site.name || site.domain} — some files were skipped (legacy filenames)`
+        : `Pull complete for ${site.name || site.domain}`);
+      return { success: true, warning: fileWarning };
 
     } catch (error: any) {
       // The local DB was (partially) overwritten — a half-imported or
@@ -1072,20 +1093,23 @@ export default function (context: AddonMainContext): void {
       sendProgress({ stage: 'files', progress: 8, message: 'Syncing files to Kinsta...' });
 
       const rsync = resolveRsync();
-      await runCommand(sync, rsync.bin, [
+      const rsyncResult = await runCommand(sync, rsync.bin, [
         '-az', '--delete', ...rsyncProgressArgs(rsync), ...excludeArgs,
         '-e', sshCommandForRsync,
         `${localPublicPath}/`,
         `${remoteHost}:~/public/`,
       ], {
+        // 23/24 = partial transfer — warn instead of failing the whole sync
+        okCodes: [23, 24],
         onStdout: makeRsyncProgressParser(rsync, (pct) => {
           // Files = 8–50% of the overall push
           const overall = 8 + Math.round(pct * 0.42);
           sendProgress({ stage: 'files', progress: overall, message: `Syncing files to Kinsta... ${pct}%` });
         }),
       });
+      const fileWarning = describePartialTransfer(rsyncResult);
 
-      sendProgress({ stage: 'files', progress: 50, message: 'Files synced!' });
+      sendProgress({ stage: 'files', progress: 50, message: fileWarning ? 'Files synced (some skipped)' : 'Files synced!' });
 
       // 3. Database (if requested)
       if (options.includeDatabase) {
@@ -1152,9 +1176,11 @@ export default function (context: AddonMainContext): void {
       }
 
       recordSync(localSiteId, 'push', envInfo.envType, Date.now() - startedAt);
-      sendProgress({ stage: 'done', progress: 100, message: 'Push complete!' });
-      notify('Kinsta Sync', `Push complete for ${site.name || site.domain}`);
-      return { success: true };
+      sendProgress({ stage: 'done', progress: 100, message: fileWarning ? `Push complete — ${fileWarning}` : 'Push complete!' });
+      notify('Kinsta Sync', fileWarning
+        ? `Push complete for ${site.name || site.domain} — some files were skipped (legacy filenames)`
+        : `Push complete for ${site.name || site.domain}`);
+      return { success: true, warning: fileWarning };
 
     } catch (error: any) {
       // The remote DB was (partially) overwritten — restore the backup we

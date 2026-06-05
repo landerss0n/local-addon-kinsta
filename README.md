@@ -88,6 +88,7 @@ Stored locally (in Local's app-data directory under `addons-data/kinsta-sync/`):
 | "The local site must be running for database sync" | Start the site in Local first — DB import needs its MySQL socket |
 | SSH errors during sync | Make sure your SSH key is added in MyKinsta and the environment has SSH access enabled |
 | Kinsta backup step skipped | All 5 manual backup slots are taken by your own backups — delete one in MyKinsta |
+| "N file(s) were skipped" warning after sync | Those files have names in a legacy encoding (e.g. Latin-1 `åäö`) that macOS can't store. Everything else synced. Fix permanently by renaming the files on the server (and updating any references) |
 
 ## Development
 
