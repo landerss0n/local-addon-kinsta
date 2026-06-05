@@ -98,6 +98,8 @@ The same applies to the **Pull/Push footer bar** (bottom-right on every site, ne
 2. **The connect drawer** ("Push from Local" sign-in view): the host cards are hardcoded — it does NOT iterate the adapter registry, it explicitly creates exactly two cards (`hostName:"WP Engine"`, `hostName:"Flywheel"`) plus a hardcoded WP Migrate promo. Scanned ±30k chars around the drawer implementation: zero hooks (only unrelated `allowedSiteOverlayStatuses` nearby). So even the registerHostAdapter hack would never surface here.
 3. **The sync engine** (main process): class-per-host with no generic plug-in surface — `/main/magicSync/{WPE,Flywheel}{Pull,Push}Service.js`, `ConnectManifest{Wpe,Flywheel}Service.js`. "Magic Sync" (manifest diffing) talks directly to WP Engine/Flywheel Hub APIs and infrastructure; there is no backend path for a third host.
 
+**Magic Sync internals (investigated 2026-06-05):** the WPE variant is largely rsync over SSH (`rsync+<install>@<install>.ssh.wpengine.net`) using dry-run to list modifications; the Flywheel variant diffs path+mtime manifests via Hub. The services are instantiated inside Local's main with internal deps (Hub auth, ipcEvents, analytics) — not reachable from add-ons. The user-facing value (diff preview, selective sync, "only newer files") is replicable in our own pipeline with `rsync --dry-run --itemize-changes`, `--update`, and per-file `--include`/`--exclude` — a possible future "Preview changes before push" feature.
+
 Our approach (native More-menu items + drawers) is the officially documented pattern for third-party hosting integrations and as close to native as the API allows.
 
 ## Official design rules (build.localwp.com)
