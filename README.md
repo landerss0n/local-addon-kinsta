@@ -21,7 +21,7 @@ Sync WordPress sites between [Local](https://localwp.com) and [Kinsta](https://k
 - **rsync** — macOS ships with a limited rsync; `brew install rsync` is recommended for full live progress (everything works without it, you just get coarser progress)
 - **A Kinsta account** with:
   - an [API key](https://my.kinsta.com/account/api-keys) (create with an expiry and rotate it periodically)
-  - your **Company ID** (MyKinsta → Company → Company Details)
+  - your **Company ID** — found in your MyKinsta URL (`my.kinsta.com/?idCompany=<id>`) or under MyKinsta → *your username* → Company settings → Billing details
   - your **SSH key added** to MyKinsta (file/database transfer runs over SSH)
 
 ## Installation

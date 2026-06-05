@@ -188,7 +188,7 @@ const KinstaSettings: React.FC = () => {
               placeholder="e.g. abc123def456"
             />
             <small style={{ color: '#888' }}>
-              Find this in MyKinsta → Company → Company Details
+              Found in your MyKinsta URL (?idCompany=...) or under Company settings → Billing details
             </small>
           </div>
 
