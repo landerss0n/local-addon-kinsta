@@ -16,6 +16,14 @@
   },
   "main": "lib/main/index.js",
   "renderer": "lib/renderer/index.js",
+  "files": [
+    "lib",
+    "icon.svg",
+    "README.md"
+  ],
+  "bundledDependencies": [
+    "axios"
+  ],
   "scripts": {
     "build": "npm run build:main && npm run build:renderer",
     "build:main": "tsc",
@@ -25,8 +33,7 @@
     "watch:renderer": "webpack --watch --config webpack.config.js"
   },
   "dependencies": {
-    "axios": "^1.6.0",
-    "lodash": "^4.17.23"
+    "axios": "^1.6.0"
   },
   "devDependencies": {
     "@getflywheel/local": "^9.2.9",

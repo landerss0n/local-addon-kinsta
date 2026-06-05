@@ -26,7 +26,13 @@ Sync WordPress sites between [Local](https://localwp.com) and [Kinsta](https://k
 
 ## Installation
 
-Until/unless this is listed in Local's add-on library, install from source:
+### From a release (recommended)
+
+1. Download the latest `.tgz` from [Releases](https://github.com/landerss0n/local-addon-kinsta/releases)
+2. In Local: **Add-ons → Installed → Install from disk** and pick the file
+3. Enable the add-on and relaunch Local when prompted
+
+### From source
 
 ```bash
 cd ~/Library/Application\ Support/Local/addons   # macOS
