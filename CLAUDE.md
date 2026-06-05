@@ -42,7 +42,8 @@ Both modules `export default function (context) {...}` — Local passes a `conte
 - `KinstaPage.tsx` — The add-on's home: a dedicated page under the site's More tab (route `/main/site-info/:siteId/kinsta`). Shows link status, last pulled/pushed, and Pull/Push/Link/Unlink actions. Title bar says "Kinsta" (docs requirement for new tabs).
 - `KinstaSitePanel.tsx` — `KinstaDrawerHost`: invisible component mounted via `SiteInfo_TabNav_Items`; owns the drawers and listens for `kinsta:action` events
 - `KinstaLinkDrawer.tsx` — Drawer for connecting API and linking sites (success view with "Pull from Kinsta" shortcut after linking)
-- `KinstaSyncDrawer.tsx` — Drawer for pull/push sync operations (cancel button, last-synced info)
+- `KinstaSyncDrawer.tsx` — Drawer for pull sync operations (cancel button, last-synced info). Push code paths remain but are no longer reached.
+- `KinstaPushScreen.tsx` — Full-screen Magic Sync-style push preview (branch `feat/push-preview-fullscreen`): `FlyModal` styled fullscreen via injected CSS classes (native overlay → focus trap/ESC/X for free), left sidebar (env `FlySelect`, option checkboxes, push button), right pane (`VirtualTable` file diff with select-all `mixed` checkbox, mode `FlySelect` newer/all, ⟳/✕/mb counts). Data from `kinsta:pushPreview` (rsync dry-run `--itemize-changes --out-format='%i|%l|%n'`, parsed by exported `parseItemizeLine`; degraded name-only mode when openrsync lacks the flags). Selective push: checked files via `--files-from` (no `--delete`), checked deletions via strictly-validated single-quoted paths (`safeRemoteRelPath`) in chunked `ssh rm -rf --` commands.
 - `KinstaSettings.tsx` — Preferences panel for API configuration
 
 ### UI architecture (native pattern per "Giving your add-on a home")

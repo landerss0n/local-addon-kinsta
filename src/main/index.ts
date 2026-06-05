@@ -131,6 +131,13 @@ interface SyncOptions {
   includeDatabase?: boolean;
   // Push only: create a native Kinsta backup (files + DB) before pushing
   kinstaBackup?: boolean;
+  // Push only (from the preview screen): sync mode + selective file lists.
+  // When `files` is present the rsync runs with --files-from and WITHOUT
+  // --delete; `deletions` are executed separately so unchecked deletions
+  // are preserved on the remote.
+  mode?: 'newer' | 'all';
+  files?: string[];
+  deletions?: string[];
 }
 
 // The subset of Local.SiteJSON we actually use (full object arrives over IPC)
@@ -464,6 +471,10 @@ export interface RsyncInfo {
   bin: string;
   supportsProgress2: boolean;
   supportsProgress: boolean;
+  // Needed for the push preview (dry-run diff). openrsync lacks both —
+  // the preview then degrades to a name-only list.
+  supportsItemizeChanges: boolean;
+  supportsOutFormat: boolean;
 }
 
 let cachedRsync: RsyncInfo | null = null;
@@ -476,7 +487,7 @@ function probeRsyncFlag(bin: string, flag: string): boolean {
   }
 }
 
-function resolveRsync(): RsyncInfo {
+export function resolveRsync(): RsyncInfo {
   if (cachedRsync) return cachedRsync;
 
   const candidates = ['/opt/homebrew/bin/rsync', '/usr/local/bin/rsync', '/usr/bin/rsync', 'rsync'];
@@ -493,6 +504,8 @@ function resolveRsync(): RsyncInfo {
       bin,
       supportsProgress2: probeRsyncFlag(bin, '--info=progress2'),
       supportsProgress: probeRsyncFlag(bin, '--progress'),
+      supportsItemizeChanges: probeRsyncFlag(bin, '--itemize-changes'),
+      supportsOutFormat: probeRsyncFlag(bin, '--out-format=%n'),
     };
     if (info.supportsProgress2) {
       cachedRsync = info;
@@ -501,7 +514,13 @@ function resolveRsync(): RsyncInfo {
     fallback = fallback || info;
   }
 
-  cachedRsync = fallback || { bin: 'rsync', supportsProgress2: false, supportsProgress: false };
+  cachedRsync = fallback || {
+    bin: 'rsync',
+    supportsProgress2: false,
+    supportsProgress: false,
+    supportsItemizeChanges: false,
+    supportsOutFormat: false,
+  };
   return cachedRsync;
 }
 
@@ -550,6 +569,124 @@ export function searchReplacePairs(fromDomain: string, toDomain: string): Array<
     [`http://${fromDomain}`, `http://${toDomain}`],
     [`//${fromDomain}`, `//${toDomain}`],
   ];
+}
+
+// ---------------------------------------------------------------------------
+// Push preview (rsync dry-run diff)
+// ---------------------------------------------------------------------------
+
+export interface PushDiffRow {
+  path: string;          // relative to ~/public
+  op: 'add' | 'update' | 'delete';
+  isDir: boolean;
+  sizeBytes: number;     // rsync %l; 0 for deletes/dirs/unknown
+  localMtime?: number;   // epoch ms from fs.stat (add/update only)
+}
+
+// Parse one line of `rsync -n --itemize-changes --out-format='%i|%l|%n'`.
+// %i is the YXcstpoguax flag string:
+//   *deleting        — file will be removed on the receiver (--delete)
+//   <f+++++++++      — new file transferred to remote (push direction)
+//   <f.st......      — existing file, size/time changed → update
+//   cd+++++++++      — new directory
+//   .f / .d ...      — attrs only, no transfer → skip
+export function parseItemizeLine(line: string): Omit<PushDiffRow, 'localMtime'> | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+
+  // Deletions: with --out-format the line is "*deleting|<len>|<path>";
+  // without it rsync prints "*deleting   path". Handle both.
+  if (trimmed.startsWith('*deleting')) {
+    const rest = trimmed.includes('|')
+      ? trimmed.split('|').slice(2).join('|')               // %i|%l|%n form
+      : trimmed.slice('*deleting'.length).replace(/^\s+/, ''); // plain form
+    if (!rest || rest === './') return null;
+    const isDir = rest.endsWith('/');
+    return { path: rest.replace(/\/$/, ''), op: 'delete', isDir, sizeBytes: 0 };
+  }
+
+  const parts = trimmed.split('|');
+  if (parts.length < 3) return null; // rsync chatter ("sending incremental file list", totals, ...)
+  const flags = parts[0];
+  const sizeBytes = parseInt(parts[1], 10) || 0;
+  const filePath = parts.slice(2).join('|'); // paths may legitimately contain '|'
+
+  if (!filePath || filePath === './') return null;
+  if (!/^[<>ch.*]/.test(flags) || flags.length < 2) return null;
+
+  const changeType = flags[0];   // < > transfer, c create (dirs), . attrs-only, h hardlink
+  const fileType = flags[1];     // f file, d dir, L symlink
+
+  if (changeType === '.') return null; // attribute-only change — not content
+  const isDir = fileType === 'd';
+  const isNew = flags.slice(2).split('').every(c => c === '+');
+
+  return {
+    path: filePath.replace(/\/$/, ''),
+    op: isNew ? 'add' : 'update',
+    isDir,
+    sizeBytes: isDir ? 0 : sizeBytes,
+  };
+}
+
+export function parseItemizeOutput(stdout: string): Array<Omit<PushDiffRow, 'localMtime'>> {
+  return stdout.split('\n').map(parseItemizeLine).filter((r): r is Omit<PushDiffRow, 'localMtime'> => r !== null);
+}
+
+// Degraded fallback for rsync builds without --itemize-changes/--out-format
+// (openrsync): `rsync -n -v` prints one path per line plus "deleting X" lines.
+// Cannot distinguish add vs update, has no sizes.
+export function parseVerboseDryRun(stdout: string): Array<Omit<PushDiffRow, 'localMtime'>> {
+  const rows: Array<Omit<PushDiffRow, 'localMtime'>> = [];
+  for (const raw of stdout.split('\n')) {
+    const line = raw.trim();
+    if (!line || line === './') continue;
+    if (/^(sending|building|sent |total |created directory|receiving)/.test(line)) continue;
+    if (line.startsWith('deleting ')) {
+      const p = line.slice('deleting '.length);
+      rows.push({ path: p.replace(/\/$/, ''), op: 'delete', isDir: p.endsWith('/'), sizeBytes: 0 });
+    } else {
+      rows.push({ path: line.replace(/\/$/, ''), op: 'update', isDir: line.endsWith('/'), sizeBytes: 0 });
+    }
+  }
+  return rows;
+}
+
+// Security: the selective-push remote `rm` is the only place a file path enters
+// an ssh remote-command STRING (everything else is spawn arg arrays). Strictly
+// validate, then single-quote. Returns null when the path must be rejected.
+export function safeRemoteRelPath(p: string): string | null {
+  if (!p || p.length > 4096) return null;
+  if (p.includes("'") || p.includes('\\')) return null;       // would escape the quoting
+  if (p.includes('\n') || p.includes('\r') || p.includes('\0')) return null;
+  if (p.startsWith('/') || p.startsWith('~')) return null;     // must stay relative
+  if (p.split('/').some(seg => seg === '..' || seg === '')) return null; // no traversal, no '//'
+  if (/[`$!;&<>(){}*?#]/.test(p)) return null;                 // defense in depth inside single quotes
+  return `'${p}'`;
+}
+
+// Pure builder for the push rsync invocation so the flag logic is unit-testable.
+// Selective pushes (files list) drop --delete: deletions are executed separately
+// (per checked row) so unchecked deletions are preserved on the remote.
+export function buildPushRsyncArgs(opts: {
+  rsync: RsyncInfo;
+  excludeArgs: string[];
+  sshCommand: string;
+  localPublicPath: string;
+  remoteHost: string;
+  mode?: 'newer' | 'all';
+  filesFromPath?: string;
+}): string[] {
+  const args = ['-az'];
+  if (opts.filesFromPath) {
+    args.push(`--files-from=${opts.filesFromPath}`);
+  } else {
+    args.push('--delete');
+  }
+  if (opts.mode === 'newer') args.push('--update');
+  args.push(...rsyncProgressArgs(opts.rsync), ...opts.excludeArgs);
+  args.push('-e', opts.sshCommand, `${opts.localPublicPath}/`, `${opts.remoteHost}:~/public/`);
+  return args;
 }
 
 // ---------------------------------------------------------------------------
@@ -792,6 +929,66 @@ export default function (context: AddonMainContext): void {
       return { success: true, cleared };
     } catch (error: any) {
       return { success: false, error: error.response?.data?.message || error.message };
+    }
+  });
+
+  // Push preview: rsync dry-run diff of what a push would change on Kinsta.
+  // Read-only — no files are touched on either side.
+  ipcMain.handle('kinsta:pushPreview', async (
+    _event: IpcMainInvokeEvent,
+    localSiteId: string,
+    site: SiteInfo,
+    envInfo: EnvironmentInfo,
+    options: { mode?: 'newer' | 'all'; includeUploads?: boolean } = {}
+  ) => {
+    const mode = options.mode || 'newer';
+    if (activeSyncs.has(localSiteId)) {
+      return { success: false, error: 'A sync is already running for this site', mode };
+    }
+    if (!validateEnvironmentInfo(envInfo)) {
+      return { success: false, error: 'Invalid environment configuration.', mode };
+    }
+
+    const localPublicPath = path.join(expandPath(site.path), 'app', 'public');
+    const sshCommandForRsync = `ssh -p ${envInfo.sshPort} -o StrictHostKeyChecking=accept-new`;
+    const remoteHost = `${envInfo.sshUser}@${envInfo.sshHost}`;
+
+    const excludeArgs = EXCLUDE_PATTERNS.map(p => `--exclude=${p}`);
+    if (!options.includeUploads) {
+      excludeArgs.push('--exclude=wp-content/uploads/');
+    }
+
+    const rsync = resolveRsync();
+    const degraded = !(rsync.supportsItemizeChanges && rsync.supportsOutFormat);
+
+    const args = ['-az', '--delete', '-n'];
+    if (mode === 'newer') args.push('--update');
+    args.push(...(degraded ? ['-v'] : ['--itemize-changes', '--out-format=%i|%l|%n']));
+    args.push(...excludeArgs, '-e', sshCommandForRsync, `${localPublicPath}/`, `${remoteHost}:~/public/`);
+
+    try {
+      let stdout = '';
+      // Throwaway ActiveSync — previews are not cancellable (they're quick reads)
+      await runCommand({ cancelled: false, child: null }, rsync.bin, args, {
+        okCodes: [23, 24],
+        onStdout: (chunk) => { stdout += chunk; },
+      });
+
+      const parsed = degraded ? parseVerboseDryRun(stdout) : parseItemizeOutput(stdout);
+
+      // Enrich adds/updates with the local file's mtime for the "Local" column
+      const rows: PushDiffRow[] = parsed.map((row) => {
+        if (row.op === 'delete' || row.isDir) return row;
+        try {
+          return { ...row, localMtime: fs.statSync(path.join(localPublicPath, row.path)).mtimeMs };
+        } catch (e) {
+          return row; // vanished since the dry-run — harmless
+        }
+      });
+
+      return { success: true, rows, degraded, mode };
+    } catch (error: any) {
+      return { success: false, error: error.message, mode };
     }
   });
 
@@ -1097,21 +1294,58 @@ export default function (context: AddonMainContext): void {
       sendProgress({ stage: 'files', progress: 8, message: 'Syncing files to Kinsta...' });
 
       const rsync = resolveRsync();
-      const rsyncResult = await runCommand(sync, rsync.bin, [
-        '-az', '--delete', ...rsyncProgressArgs(rsync), ...excludeArgs,
-        '-e', sshCommandForRsync,
-        `${localPublicPath}/`,
-        `${remoteHost}:~/public/`,
-      ], {
-        // 23/24 = partial transfer — warn instead of failing the whole sync
-        okCodes: [23, 24],
-        onStdout: makeRsyncProgressParser(rsync, (pct) => {
-          // Files = 8–50% of the overall push
-          const overall = 8 + Math.round(pct * 0.42);
-          sendProgress({ stage: 'files', progress: overall, message: `Syncing files to Kinsta... ${pct}%` });
-        }),
-      });
-      const fileWarning = describePartialTransfer(rsyncResult);
+
+      // Selective push (from the preview screen): only the checked files
+      const selective = Array.isArray(options.files);
+      let filesFromPath: string | undefined;
+      if (selective) {
+        filesFromPath = path.join(TEMP_DIR, `${localSiteId}-push-files.txt`);
+        ensureConfigDir();
+        // One path per line, relative to the rsync source root (~/public)
+        fs.writeFileSync(filesFromPath, (options.files || []).join('\n') + '\n');
+      }
+
+      let fileWarning: string | null = null;
+      try {
+        if (!selective || (options.files && options.files.length > 0)) {
+          const rsyncResult = await runCommand(sync, rsync.bin, buildPushRsyncArgs({
+            rsync,
+            excludeArgs,
+            sshCommand: sshCommandForRsync,
+            localPublicPath,
+            remoteHost,
+            mode: options.mode,
+            filesFromPath,
+          }), {
+            // 23/24 = partial transfer — warn instead of failing the whole sync
+            okCodes: [23, 24],
+            onStdout: makeRsyncProgressParser(rsync, (pct) => {
+              // Files = 8–50% of the overall push
+              const overall = 8 + Math.round(pct * 0.42);
+              sendProgress({ stage: 'files', progress: overall, message: `Syncing files to Kinsta... ${pct}%` });
+            }),
+          });
+          fileWarning = describePartialTransfer(rsyncResult);
+        }
+      } finally {
+        if (filesFromPath) { try { fs.unlinkSync(filesFromPath); } catch (e) {} }
+      }
+
+      // Checked deletions from the preview — executed explicitly (instead of
+      // rsync --delete) so unchecked deletions survive. Paths are strictly
+      // validated + single-quoted (the one place a path enters a shell string).
+      if (options.deletions && options.deletions.length > 0) {
+        sendProgress({ stage: 'files', progress: 48, message: `Deleting ${options.deletions.length} file(s) on Kinsta...` });
+        const quoted = options.deletions.map((p) => {
+          const q = safeRemoteRelPath(p);
+          if (!q) throw new Error(`Unsafe path refused for remote deletion: ${p}`);
+          return q;
+        });
+        for (let i = 0; i < quoted.length; i += 200) {
+          const batch = quoted.slice(i, i + 200);
+          await runCommand(sync, 'ssh', sshArgs(envInfo, `cd ~/public && rm -rf -- ${batch.join(' ')}`));
+        }
+      }
 
       sendProgress({ stage: 'files', progress: 50, message: fileWarning ? 'Files synced (some skipped)' : 'Files synced!' });
 

@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import KinstaSyncDrawer from './KinstaSyncDrawer';
 import KinstaLinkDrawer from './KinstaLinkDrawer';
+import KinstaPushScreen from './KinstaPushScreen';
 
 const { ipcRenderer } = window.require('electron');
 
@@ -35,6 +36,7 @@ export const KinstaDrawerHost: React.FC<Props> = ({ site }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [siteLink, setSiteLink] = useState<SiteLink | null>(null);
   const [drawerMode, setDrawerMode] = useState<'pull' | 'push' | null>(null);
+  const [showPushScreen, setShowPushScreen] = useState(false);
   const [showLinkDrawer, setShowLinkDrawer] = useState(false);
 
   // Tell the Kinsta page (and anything else) that link/sync state changed
@@ -62,9 +64,16 @@ export const KinstaDrawerHost: React.FC<Props> = ({ site }) => {
       if (siteId && siteId !== site.id) return;
       switch (action as KinstaMenuAction) {
         case 'pull':
-        case 'push':
           if (apiConnected && linkCache.get(site.id)) {
-            setDrawerMode(action);
+            setDrawerMode('pull');
+          } else {
+            setShowLinkDrawer(true);
+          }
+          break;
+        case 'push':
+          // Push gets the full-screen preview (Magic Sync-style); pull keeps the drawer
+          if (apiConnected && linkCache.get(site.id)) {
+            setShowPushScreen(true);
           } else {
             setShowLinkDrawer(true);
           }
@@ -121,6 +130,19 @@ export const KinstaDrawerHost: React.FC<Props> = ({ site }) => {
             notifyStateChanged();
           }}
           mode={drawerMode}
+          site={site}
+          siteLink={siteLink}
+        />
+      )}
+
+      {showPushScreen && siteLink && (
+        <KinstaPushScreen
+          isOpen={true}
+          onClose={() => {
+            setShowPushScreen(false);
+            // Push may have updated lastPushAt — refresh the page
+            notifyStateChanged();
+          }}
           site={site}
           siteLink={siteLink}
         />

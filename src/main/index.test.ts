@@ -15,6 +15,11 @@ import {
   EXCLUDE_PATTERNS,
   EnvironmentInfo,
   RsyncInfo,
+  parseItemizeLine,
+  parseItemizeOutput,
+  parseVerboseDryRun,
+  safeRemoteRelPath,
+  buildPushRsyncArgs,
 } from './index';
 
 const env = (overrides: Partial<EnvironmentInfo> = {}): EnvironmentInfo => ({
@@ -165,6 +170,148 @@ describe('searchReplacePairs', () => {
       ['http://gbdbutik.se', 'http://gbd-shop.local'],
       ['//gbdbutik.se', '//gbd-shop.local'],
     ]);
+  });
+});
+
+describe('parseItemizeLine (push preview diff)', () => {
+  it('classifies a brand new file as add', () => {
+    expect(parseItemizeLine('<f+++++++++|1234|wp-content/themes/x/a.php')).toEqual({
+      path: 'wp-content/themes/x/a.php', op: 'add', isDir: false, sizeBytes: 1234,
+    });
+  });
+
+  it('classifies a changed file as update', () => {
+    expect(parseItemizeLine('<f.st......|987|style.css')).toEqual({
+      path: 'style.css', op: 'update', isDir: false, sizeBytes: 987,
+    });
+    expect(parseItemizeLine('<fcst......|10|x.js')?.op).toBe('update');
+  });
+
+  it('classifies a new directory as add + isDir with size 0', () => {
+    expect(parseItemizeLine('cd+++++++++|0|wp-content/uploads/2026/')).toEqual({
+      path: 'wp-content/uploads/2026', op: 'add', isDir: true, sizeBytes: 0,
+    });
+  });
+
+  it('parses deletions in both output forms', () => {
+    expect(parseItemizeLine('*deleting|0|old/file.php')).toEqual({
+      path: 'old/file.php', op: 'delete', isDir: false, sizeBytes: 0,
+    });
+    expect(parseItemizeLine('*deleting   old/dir/')).toEqual({
+      path: 'old/dir', op: 'delete', isDir: true, sizeBytes: 0,
+    });
+  });
+
+  it('skips attribute-only changes and chatter', () => {
+    expect(parseItemizeLine('.f...p.....|10|x.php')).toBeNull();
+    expect(parseItemizeLine('.d..t......|0|somedir/')).toBeNull();
+    expect(parseItemizeLine('sending incremental file list')).toBeNull();
+    expect(parseItemizeLine('sent 1,024 bytes  received 100 bytes')).toBeNull();
+    expect(parseItemizeLine('')).toBeNull();
+    expect(parseItemizeLine('<d.........|0|./')).toBeNull();
+  });
+
+  it('keeps | characters inside filenames intact', () => {
+    expect(parseItemizeLine('<f+++++++++|5|weird|name.txt')?.path).toBe('weird|name.txt');
+  });
+
+  it('parseItemizeOutput maps a whole block', () => {
+    const out = [
+      'sending incremental file list',
+      '<f+++++++++|100|a.txt',
+      '*deleting|0|b.txt',
+      '.f...p.....|1|c.txt',
+      'sent 99 bytes',
+    ].join('\n');
+    expect(parseItemizeOutput(out)).toEqual([
+      { path: 'a.txt', op: 'add', isDir: false, sizeBytes: 100 },
+      { path: 'b.txt', op: 'delete', isDir: false, sizeBytes: 0 },
+    ]);
+  });
+});
+
+describe('parseVerboseDryRun (degraded preview)', () => {
+  it('classifies deleting lines and plain paths', () => {
+    const out = [
+      'sending incremental file list',
+      'deleting old.php',
+      'wp-content/themes/x/a.php',
+      'wp-content/uploads/2026/',
+      'sent 1024 bytes  received 20 bytes',
+      'total size is 123  speedup is 1.0',
+      '',
+    ].join('\n');
+    expect(parseVerboseDryRun(out)).toEqual([
+      { path: 'old.php', op: 'delete', isDir: false, sizeBytes: 0 },
+      { path: 'wp-content/themes/x/a.php', op: 'update', isDir: false, sizeBytes: 0 },
+      { path: 'wp-content/uploads/2026', op: 'update', isDir: true, sizeBytes: 0 },
+    ]);
+  });
+});
+
+describe('safeRemoteRelPath (remote rm quoting)', () => {
+  it('accepts normal relative paths, including spaces and åäö', () => {
+    expect(safeRemoteRelPath('wp-content/themes/x/a.php')).toBe("'wp-content/themes/x/a.php'");
+    expect(safeRemoteRelPath('dir with space/f.txt')).toBe("'dir with space/f.txt'");
+    expect(safeRemoteRelPath('uploads/2019/Planetväxel.jpg')).toBe("'uploads/2019/Planetväxel.jpg'");
+  });
+
+  it('rejects traversal, absolute paths and shell metacharacters', () => {
+    for (const bad of [
+      '../etc/passwd',
+      'a/../../etc',
+      '/etc/passwd',
+      '~/secrets',
+      "a'; rm -rf ~",
+      'a`id`.txt',
+      'a$(id).txt',
+      'a;b.txt',
+      'a&b.txt',
+      'a>b.txt',
+      'a*.txt',
+      'a\nb.txt',
+      'a\\b.txt',
+      'a//b.txt',
+      '',
+    ]) {
+      expect(safeRemoteRelPath(bad), `should reject: ${JSON.stringify(bad)}`).toBeNull();
+    }
+  });
+});
+
+describe('buildPushRsyncArgs', () => {
+  const rsync: RsyncInfo = {
+    bin: 'rsync', supportsProgress2: true, supportsProgress: true,
+    supportsItemizeChanges: true, supportsOutFormat: true,
+  };
+  const base = {
+    rsync,
+    excludeArgs: ['--exclude=.git'],
+    sshCommand: 'ssh -p 22',
+    localPublicPath: '/x/app/public',
+    remoteHost: 'u@h',
+  };
+
+  it('full push keeps --delete', () => {
+    const args = buildPushRsyncArgs({ ...base, mode: 'all' });
+    expect(args).toContain('--delete');
+    expect(args).not.toContain('--update');
+    expect(args.join(' ')).not.toContain('--files-from');
+  });
+
+  it('newer mode adds --update', () => {
+    expect(buildPushRsyncArgs({ ...base, mode: 'newer' })).toContain('--update');
+  });
+
+  it('selective push uses --files-from and drops --delete', () => {
+    const args = buildPushRsyncArgs({ ...base, mode: 'all', filesFromPath: '/tmp/files.txt' });
+    expect(args).toContain('--files-from=/tmp/files.txt');
+    expect(args).not.toContain('--delete');
+  });
+
+  it('always ends with -e ssh, source, destination', () => {
+    const args = buildPushRsyncArgs({ ...base, mode: 'all' });
+    expect(args.slice(-4)).toEqual(['-e', 'ssh -p 22', '/x/app/public/', 'u@h:~/public/']);
   });
 });
 
