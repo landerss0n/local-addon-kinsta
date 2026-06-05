@@ -119,7 +119,10 @@ Our approach (native More-menu items + drawers) is the officially documented pat
 npm run build:main      # Compile TypeScript (main process)
 npm run build:renderer  # Bundle React with webpack (renderer)
 npm run build           # Both
+npm test                # vitest — unit tests for main-process helpers
 ```
+
+Tests live in `src/main/index.test.ts` (excluded from the tsc build). The `@getflywheel` imports in `src/main/index.ts` are type-only so the module is importable outside Electron; pure helpers (validators, rsync progress parsing, `describePartialTransfer`, …) are exported for tests.
 
 **Reload workflow:** the add-on's main process watches `lib/renderer/` (`watchRendererBundle`) and reloads Local's windows automatically when webpack rewrites the bundle — renderer changes hot-reload in ~1s with no restart. Main-process changes still require a full Local restart (Electron can't swap the main process):
 

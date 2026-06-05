@@ -1,5 +1,6 @@
-import { AddonMainContext } from '@getflywheel/local/main';
-import * as Local from '@getflywheel/local';
+// Type-only imports — keeps this module importable outside Electron (tests)
+import type { AddonMainContext } from '@getflywheel/local/main';
+import type * as Local from '@getflywheel/local';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -62,7 +63,7 @@ function migrateLegacyConfig(): void {
 }
 
 // Files/folders to exclude during sync
-const EXCLUDE_PATTERNS = [
+export const EXCLUDE_PATTERNS = [
   '.git',
   '.git/',
   'node_modules/',
@@ -109,7 +110,7 @@ interface SiteLink {
 
 const HISTORY_LIMIT = 10;
 
-interface EnvironmentInfo {
+export interface EnvironmentInfo {
   envId: string;
   envType: 'staging' | 'live';
   sshHost: string;
@@ -133,7 +134,7 @@ interface SyncOptions {
 }
 
 // The subset of Local.SiteJSON we actually use (full object arrives over IPC)
-interface SiteInfo {
+export interface SiteInfo {
   id: string;
   name?: string;
   path: string;
@@ -236,31 +237,34 @@ function recordSync(localSiteId: string, mode: 'pull' | 'push', envType: string,
 }
 
 // Security: Validate SSH/shell values to prevent command injection
-function isValidHostname(host: string): boolean {
+export function isValidHostname(host: string): boolean {
   // Allow IP addresses and hostnames
   const hostnameRegex = /^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$/;
   const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
   return hostnameRegex.test(host) || ipRegex.test(host);
 }
 
-function isValidPort(port: string): boolean {
+export function isValidPort(port: string): boolean {
+  // Digits only — parseInt alone would accept "22 -oProxyCommand=..." which
+  // gets word-split inside rsync's -e "ssh -p <port> ..." remote shell string
+  if (!/^\d{1,5}$/.test(port)) return false;
   const portNum = parseInt(port, 10);
-  return !isNaN(portNum) && portNum > 0 && portNum <= 65535;
+  return portNum > 0 && portNum <= 65535;
 }
 
-function isValidUsername(user: string): boolean {
+export function isValidUsername(user: string): boolean {
   // SSH usernames: alphanumeric, underscores, hyphens
   return /^[a-zA-Z0-9_-]+$/.test(user);
 }
 
-function isValidDomain(domain: string): boolean {
+export function isValidDomain(domain: string): boolean {
   // Domain names: alphanumeric, dots, hyphens (allow single char and be more lenient)
   if (!domain || domain.length === 0) return false;
   // Just check for dangerous shell characters
   return !/[;&|`$"'\\<>(){}[\]!#*?]/.test(domain);
 }
 
-function validateEnvironmentInfo(env: EnvironmentInfo): boolean {
+export function validateEnvironmentInfo(env: EnvironmentInfo): boolean {
   return (
     isValidHostname(env.sshHost) &&
     isValidPort(env.sshPort) &&
@@ -270,7 +274,7 @@ function validateEnvironmentInfo(env: EnvironmentInfo): boolean {
 }
 
 // Expand ~ to home directory
-function expandPath(p: string): string {
+export function expandPath(p: string): string {
   if (p.startsWith('~')) {
     return path.join(os.homedir(), p.slice(1));
   }
@@ -435,14 +439,14 @@ function runCommand(sync: ActiveSync, cmd: string, args: string[], opts: RunOpti
 // for a clean run. Typical cause: filenames in a legacy encoding (Latin-1 åäö)
 // that macOS refuses ("Illegal byte sequence") — fixable only by renaming the
 // files on the server.
-function describePartialTransfer(result: { code: number; stderr: string }): string | null {
+export function describePartialTransfer(result: { code: number; stderr: string }): string | null {
   if (result.code === 0) return null;
   const failed = (result.stderr.match(/failed:|cannot /g) || []).length;
   console.warn('[Kinsta] rsync partial transfer (code', result.code, '):', result.stderr.slice(-2000));
   return `${failed || 'Some'} file(s) were skipped — usually filenames in a legacy encoding (e.g. Latin-1 åäö) that macOS cannot store. Rename those files on the server to fix. Everything else synced.`;
 }
 
-function sshArgs(envInfo: EnvironmentInfo, remoteCmd: string): string[] {
+export function sshArgs(envInfo: EnvironmentInfo, remoteCmd: string): string[] {
   return [
     '-p', envInfo.sshPort,
     '-o', 'StrictHostKeyChecking=accept-new',
@@ -456,7 +460,7 @@ function sshArgs(envInfo: EnvironmentInfo, remoteCmd: string): string[] {
 // is unreliable across implementations, so we capability-probe each flag:
 // `rsync <flag> --version` exits 0 only if the flag is recognized.
 // Prefer a Homebrew/GNU rsync when installed.
-interface RsyncInfo {
+export interface RsyncInfo {
   bin: string;
   supportsProgress2: boolean;
   supportsProgress: boolean;
@@ -501,7 +505,7 @@ function resolveRsync(): RsyncInfo {
   return cachedRsync;
 }
 
-function rsyncProgressArgs(rsync: RsyncInfo): string[] {
+export function rsyncProgressArgs(rsync: RsyncInfo): string[] {
   if (rsync.supportsProgress2) return ['--info=progress2'];
   if (rsync.supportsProgress) return ['--progress'];
   return [];
@@ -511,7 +515,7 @@ function rsyncProgressArgs(rsync: RsyncInfo): string[] {
 // - rsync >= 3.1 (--info=progress2): "  1,234,567  42%  ..." is overall — use directly.
 // - rsync 2.6.9 (--progress): per-file % bounces, but "to-check=remaining/total"
 //   after each file gives a stable overall estimate.
-function makeRsyncProgressParser(rsync: RsyncInfo, onPercent: (pct: number) => void): (chunk: string) => void {
+export function makeRsyncProgressParser(rsync: RsyncInfo, onPercent: (pct: number) => void): (chunk: string) => void {
   return (chunk: string) => {
     const toCheck = chunk.match(/to-check=(\d+)\/(\d+)/g);
     if (toCheck && toCheck.length) {
@@ -531,7 +535,7 @@ function makeRsyncProgressParser(rsync: RsyncInfo, onPercent: (pct: number) => v
 }
 
 // Resolve DB credentials from the site object (with Local's defaults)
-function getDbCredentials(site: SiteInfo): { database: string; user: string; password: string } {
+export function getDbCredentials(site: SiteInfo): { database: string; user: string; password: string } {
   return {
     database: site.mysql?.database || 'local',
     user: site.mysql?.user || 'root',
@@ -540,7 +544,7 @@ function getDbCredentials(site: SiteInfo): { database: string; user: string; pas
 }
 
 // WP-CLI search-replace passes covering https, http, and protocol-relative URLs
-function searchReplacePairs(fromDomain: string, toDomain: string): Array<[string, string]> {
+export function searchReplacePairs(fromDomain: string, toDomain: string): Array<[string, string]> {
   return [
     [`https://${fromDomain}`, `https://${toDomain}`],
     [`http://${fromDomain}`, `http://${toDomain}`],
