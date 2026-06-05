@@ -3,14 +3,16 @@ import { useState, useEffect } from 'react';
 
 const { ipcRenderer } = window.require('electron');
 
-// Simple settings component without Local components to debug
 const KinstaSettings: React.FC = () => {
   const [apiKey, setApiKey] = useState('');
   const [companyId, setCompanyId] = useState('');
+  const [companyName, setCompanyName] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     loadConfig();
@@ -21,6 +23,7 @@ const KinstaSettings: React.FC = () => {
     if (config.apiKey) {
       setApiKey('••••••••••••••••');
       setCompanyId(config.companyId || '');
+      setCompanyName(config.companyName || null);
       setIsConnected(true);
     }
   };
@@ -44,6 +47,7 @@ const KinstaSettings: React.FC = () => {
     if (result.success) {
       setIsConnected(true);
       setApiKey('••••••••••••••••');
+      setCompanyName(result.company?.name || result.company?.display_name || null);
       setSuccess('Connected to Kinsta!');
     } else {
       setError(result.error || 'Could not connect to Kinsta');
@@ -57,12 +61,20 @@ const KinstaSettings: React.FC = () => {
     setIsConnected(false);
     setApiKey('');
     setCompanyId('');
+    setCompanyName(null);
     setSuccess(null);
+    setConfirmDisconnect(false);
+  };
+
+  const handleCopyId = () => {
+    navigator.clipboard.writeText(companyId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const containerStyle: React.CSSProperties = {
     padding: '20px',
-    maxWidth: '500px',
+    maxWidth: '520px',
     color: '#fff',
   };
 
@@ -88,10 +100,24 @@ const KinstaSettings: React.FC = () => {
     marginRight: '10px',
   };
 
-  const disconnectStyle: React.CSSProperties = {
-    ...buttonStyle,
-    backgroundColor: '#ff6b6b',
-    color: '#fff',
+  const subtleButtonStyle: React.CSSProperties = {
+    background: 'none',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    borderRadius: '14px',
+    color: 'inherit',
+    fontSize: '12px',
+    padding: '4px 12px',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+  };
+
+  const infoRowStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 0',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+    fontSize: '14px',
   };
 
   return (
@@ -140,7 +166,7 @@ const KinstaSettings: React.FC = () => {
               placeholder="Enter your Kinsta API key"
             />
             <small style={{ color: '#888' }}>
-              Create at <a href="https://my.kinsta.com/account/api-keys" target="_blank" rel="noopener noreferrer" style={{ color: '#51cf66' }}>MyKinsta</a>
+              Create at <a href="https://my.kinsta.com/account/api-keys" target="_blank" rel="noopener noreferrer" style={{ color: '#51cf66' }}>MyKinsta</a> — consider setting an expiry and rotating it yearly
             </small>
           </div>
 
@@ -153,6 +179,9 @@ const KinstaSettings: React.FC = () => {
               onChange={(e) => setCompanyId(e.target.value)}
               placeholder="e.g. abc123def456"
             />
+            <small style={{ color: '#888' }}>
+              Find this in MyKinsta → Company → Company Details
+            </small>
           </div>
 
           <button style={buttonStyle} onClick={handleConnect} disabled={isConnecting}>
@@ -161,13 +190,69 @@ const KinstaSettings: React.FC = () => {
         </>
       ) : (
         <>
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '5px' }}>Company ID</label>
-            <input type="text" style={{ ...inputStyle, backgroundColor: '#1a1a1a' }} value={companyId} disabled />
+          {/* Read-only account info — not a form */}
+          <div style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '8px',
+            padding: '4px 16px',
+            marginBottom: '24px',
+          }}>
+            <div style={infoRowStyle}>
+              <span style={{ opacity: 0.6 }}>Company</span>
+              <span style={{ fontWeight: 600 }}>{companyName || '—'}</span>
+            </div>
+            <div style={{ ...infoRowStyle, borderBottom: 'none' }}>
+              <span style={{ opacity: 0.6 }}>Company ID</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontFamily: 'monospace', fontSize: '12px', opacity: 0.8 }}>{companyId}</span>
+                <button style={subtleButtonStyle} onClick={handleCopyId}>
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </span>
+            </div>
           </div>
-          <button style={disconnectStyle} onClick={handleDisconnect}>
-            Disconnect from Kinsta
-          </button>
+
+          <p style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>
+            Link sites to Kinsta from each site's <strong>More → Kinsta</strong> page.
+          </p>
+
+          {!confirmDisconnect ? (
+            <button
+              style={{ ...subtleButtonStyle, borderColor: 'rgba(255, 107, 107, 0.5)', color: '#ff6b6b', padding: '8px 16px', fontSize: '13px' }}
+              onClick={() => setConfirmDisconnect(true)}
+            >
+              Disconnect from Kinsta...
+            </button>
+          ) : (
+            <div style={{
+              padding: '16px',
+              backgroundColor: 'rgba(255, 107, 107, 0.08)',
+              border: '1px solid rgba(255, 107, 107, 0.3)',
+              borderRadius: '8px',
+            }}>
+              <p style={{ fontSize: '13px', marginBottom: '6px' }}>
+                Disconnect from Kinsta? The API key will be deleted from this machine.
+              </p>
+              <p style={{ fontSize: '12px', color: '#888', marginBottom: '14px' }}>
+                Your site links are kept and will work again after reconnecting.
+              </p>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  style={{ ...buttonStyle, backgroundColor: '#ff6b6b', color: '#fff', marginRight: 0 }}
+                  onClick={handleDisconnect}
+                >
+                  Yes, disconnect
+                </button>
+                <button
+                  style={{ ...subtleButtonStyle, padding: '10px 16px', fontSize: '13px' }}
+                  onClick={() => setConfirmDisconnect(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

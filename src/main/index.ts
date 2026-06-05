@@ -36,7 +36,10 @@ function resolveConfigPaths(): void {
   TEMP_DIR = path.join(CONFIG_DIR, 'tmp');
 }
 
-// One-time migration from ~/.kinsta-sync to userDataPath
+// One-time migration from ~/.kinsta-sync to userDataPath.
+// IMPORTANT: the legacy dir is renamed away afterwards — if it stays, every
+// startup would re-copy "missing" files and resurrect deleted credentials
+// (e.g. the API key after a disconnect).
 function migrateLegacyConfig(): void {
   if (CONFIG_DIR === LEGACY_CONFIG_DIR) return;
   if (!fs.existsSync(LEGACY_CONFIG_DIR)) return;
@@ -48,6 +51,13 @@ function migrateLegacyConfig(): void {
       fs.copyFileSync(from, to);
       console.log(`[Kinsta] Migrated ${file} to ${CONFIG_DIR}`);
     }
+  }
+  // Keep the old dir as a backup, but make sure migration never runs again
+  try {
+    fs.renameSync(LEGACY_CONFIG_DIR, `${LEGACY_CONFIG_DIR}.migrated`);
+    console.log('[Kinsta] Legacy config dir renamed to ~/.kinsta-sync.migrated');
+  } catch (e) {
+    console.error('[Kinsta] Could not rename legacy config dir:', e);
   }
 }
 
@@ -78,6 +88,7 @@ const EXCLUDE_PATTERNS = [
 
 interface KinstaConfig {
   companyId?: string;
+  companyName?: string;
 }
 
 interface SyncHistoryEntry {
@@ -669,7 +680,9 @@ export default function (context: AddonMainContext): void {
         if (!saved) {
           return { success: false, error: 'Could not save API key securely. Encryption not available.' };
         }
-        saveConfig({ companyId });
+        // Company name is shown in settings — saved defensively (field may be absent)
+        const companyName = response.data.company.name || response.data.company.display_name || undefined;
+        saveConfig({ companyId, companyName });
         return { success: true, company: response.data.company };
       }
       return { success: false, error: 'Invalid response from Kinsta API' };
