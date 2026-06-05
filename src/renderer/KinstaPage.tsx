@@ -211,7 +211,7 @@ const KinstaPage: React.FC<Props> = ({ site }) => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <KinstaIcon size={36} />
           <Title size="l" style={{ margin: 0 }}>
-            Kinsta
+            Kinsta Sync
           </Title>
         </div>
         <TextButton onClick={openMyKinsta}>

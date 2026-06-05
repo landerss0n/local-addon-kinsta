@@ -50,7 +50,7 @@ export default function (context: AddonRendererContext): void {
   // pattern — More holds navigation to add-on tabs, not raw actions).
   hooks.addFilter('siteInfoMoreMenu', (menu: any[], site: any) => {
     menu.push({
-      label: 'Kinsta',
+      label: 'Kinsta Sync',
       click: () => events.send('goToRoute', `/main/site-info/${site.id}/kinsta`),
     });
     return menu;
@@ -60,7 +60,7 @@ export default function (context: AddonRendererContext): void {
   hooks.addFilter('preferencesMenuItems', (items: AddonSettingsItem[]) => {
     const kinstaItem: AddonSettingsItem = {
       path: 'kinsta',
-      displayName: 'Kinsta',
+      displayName: 'Kinsta Sync',
       sections: KinstaSettings,
       onApply: () => {},
     };

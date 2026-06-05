@@ -211,7 +211,7 @@ const KinstaSettings: React.FC = () => {
           </div>
 
           <p style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>
-            Link sites to Kinsta from each site's <strong>More → Kinsta</strong> page.
+            Link sites to Kinsta from each site's <strong>More → Kinsta Sync</strong> page.
           </p>
 
           {!confirmDisconnect ? (
