@@ -95,6 +95,7 @@ interface Environment {
   name: string;
   display_name: string;
   is_premium: boolean;
+  cdn_cache_id?: string;
   primaryDomain?: { name: string };
   domains?: Array<{ name: string }>;
   ssh_connection?: {
@@ -116,6 +117,7 @@ interface EnvironmentInfo {
   sshPort: string;
   sshUser: string;
   remoteDomain: string;
+  cdnCacheId?: string;
 }
 
 interface Props {
@@ -204,7 +206,8 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
       sshHost: env.ssh_connection?.ssh_ip?.external_ip || '',
       sshPort: String(env.ssh_connection?.ssh_port || '22'),
       sshUser,
-      remoteDomain: env.primaryDomain?.name || env.domains?.[0]?.name || ''
+      remoteDomain: env.primaryDomain?.name || env.domains?.[0]?.name || '',
+      cdnCacheId: env.cdn_cache_id
     };
   };
 

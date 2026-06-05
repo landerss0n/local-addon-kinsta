@@ -116,6 +116,7 @@ interface EnvironmentInfo {
   sshPort: string;
   sshUser: string;
   remoteDomain: string;
+  cdnCacheId?: string;  // needed for CDN cache clearing (from env.cdn_cache_id)
 }
 
 interface SyncProgress {
@@ -761,17 +762,16 @@ export default function (context: AddonMainContext): void {
     return { success: true };
   });
 
-  // Clear Kinsta cache for an environment (also used standalone from the page).
-  // Endpoint per Kinsta API docs: POST /sites/tools/clear-cache { environment_id }
-  ipcMain.handle('kinsta:clearCache', async (_event: IpcMainInvokeEvent, envId: string) => {
+  // Clear all Kinsta caches for an environment (also used standalone from the page)
+  ipcMain.handle('kinsta:clearCache', async (_event: IpcMainInvokeEvent, envId: string, cdnCacheId?: string) => {
     const apiKey = getApiKey();
     if (!apiKey) {
       return { success: false, error: 'Not connected' };
     }
     try {
       const client = getKinstaClient(apiKey);
-      await client.post('/sites/tools/clear-cache', { environment_id: envId });
-      return { success: true };
+      const cleared = await clearKinstaCaches(client, envId, cdnCacheId);
+      return { success: true, cleared };
     } catch (error: any) {
       return { success: false, error: error.response?.data?.message || error.message };
     }
@@ -1131,13 +1131,13 @@ export default function (context: AddonMainContext): void {
           ));
         }
 
-        // Clear cache via API (POST /sites/tools/clear-cache per Kinsta docs)
+        // Clear all Kinsta caches (page + edge + CDN) via API
         const apiKeyForCache = getApiKey();
         if (apiKeyForCache) {
-          sendProgress({ stage: 'cache', progress: 97, message: 'Clearing Kinsta cache...' });
+          sendProgress({ stage: 'cache', progress: 97, message: 'Clearing Kinsta caches...' });
           try {
             const client = getKinstaClient(apiKeyForCache);
-            await client.post('/sites/tools/clear-cache', { environment_id: envInfo.envId });
+            await clearKinstaCaches(client, envInfo.envId, envInfo.cdnCacheId);
           } catch (e: any) {
             // Non-fatal, but at least leave a trace this time
             console.error('[Kinsta] Cache clear after push failed:', e.response?.data?.message || e.message);
@@ -1192,6 +1192,33 @@ export default function (context: AddonMainContext): void {
 }
 
 // Kinsta API client
+// Kinsta has three separately cleared caches (object cache/Redis has no API):
+//   page  — POST /sites/tools/clear-cache   (the only one we cleared before)
+//   edge  — POST /sites/edge-caching/clear
+//   CDN   — POST /sites/cdn/clear-cache     (needs the env's cdn_cache_id)
+// Page cache is required and propagates failure; edge/CDN are best-effort
+// since they can be disabled per environment.
+async function clearKinstaCaches(client: AxiosInstance, envId: string, cdnCacheId?: string): Promise<string[]> {
+  const cleared: string[] = [];
+  await client.post('/sites/tools/clear-cache', { environment_id: envId });
+  cleared.push('page');
+  try {
+    await client.post('/sites/edge-caching/clear', { environment_id: envId });
+    cleared.push('edge');
+  } catch (e: any) {
+    console.log('[Kinsta] Edge cache clear skipped:', e.response?.data?.message || e.message);
+  }
+  if (cdnCacheId) {
+    try {
+      await client.post('/sites/cdn/clear-cache', { environment_id: envId, cdn_cache_id: cdnCacheId });
+      cleared.push('CDN');
+    } catch (e: any) {
+      console.log('[Kinsta] CDN cache clear skipped:', e.response?.data?.message || e.message);
+    }
+  }
+  return cleared;
+}
+
 function getKinstaClient(apiKey: string): AxiosInstance {
   return axios.create({
     baseURL: KINSTA_API_BASE,

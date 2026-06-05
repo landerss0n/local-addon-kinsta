@@ -28,6 +28,7 @@ interface Environment {
   name: string;
   display_name: string;
   is_premium: boolean;
+  cdn_cache_id?: string;
   primaryDomain?: { name: string };
   domains?: Array<{ name: string }>;
   ssh_connection?: {
@@ -166,7 +167,7 @@ const KinstaPage: React.FC<Props> = ({ site }) => {
 
   const handleClearCache = async (env: Environment) => {
     setCacheState(s => ({ ...s, [env.id]: 'busy' }));
-    const result = await ipcRenderer.invoke('kinsta:clearCache', env.id);
+    const result = await ipcRenderer.invoke('kinsta:clearCache', env.id, env.cdn_cache_id);
     setCacheState(s => ({ ...s, [env.id]: result.success ? 'done' : 'error' }));
     setTimeout(() => {
       setCacheState(s => {
