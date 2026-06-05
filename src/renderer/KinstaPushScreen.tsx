@@ -11,6 +11,7 @@ import {
   ProgressBar,
   Spinner,
   Title,
+  Close,
   ConnectPushIcon,
   FileAddedIcon,
   FileRightArrowIcon,
@@ -75,20 +76,29 @@ type SyncMode = 'newer' | 'all';
 // Fullscreen sizing for the FlyModal (react-modal) — injected while mounted.
 // <style> tags in JSX render as text inside Local, so we inject a real element.
 const FULLSCREEN_CSS = `
-.KinstaPushModalOverlay {
-  padding: 0 !important;
-}
+/* Stretch FlyModal's themed content box to fill its (native) overlay.
+   NOTE: className is APPENDED to FlyModal's own class — never pass
+   overlayClassName, that would REPLACE their positioned backdrop. */
 .KinstaPushModalContent {
-  position: absolute !important;
-  inset: 0 !important;
   width: 100% !important;
   height: 100% !important;
   max-width: none !important;
   max-height: none !important;
   border-radius: 0 !important;
-  transform: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  text-align: left !important;
   display: flex;
   flex-direction: column;
+}
+/* FlyModal styles its direct child div with max-height:93vh + padding:60px
+   (the ".FlyModal > div" rule) — undo that for the fullscreen layout */
+.KinstaPushModalContent > div {
+  flex: 1;
+  min-height: 0;
+  max-height: none !important;
+  padding: 0 !important;
+  overflow-y: hidden !important;
 }
 .KinstaPushCell {
   display: flex;
@@ -138,13 +148,13 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
 
   const previewSeq = useRef(0);
 
-  // Theme — same heuristic as KinstaIcon
+  // FlyModal carries Local's theme (dark/light) — we inherit its
+  // background/text. The file-list area gets the same subtle contrast
+  // background first-party MagicSyncViewer_Content uses (#fafafa / #292a2a).
+  const border = '1px solid rgba(127, 127, 127, 0.25)';
   const isDark = typeof document !== 'undefined' &&
     parseInt((getComputedStyle(document.body).backgroundColor.match(/\d+/) || ['255'])[0], 10) < 128;
-  const bg = isDark ? '#1d1d1d' : '#ffffff';
-  const fg = isDark ? '#fff' : '#2a3132';
-  const subtle = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(42,49,50,0.6)';
-  const border = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+  const contentBg = isDark ? '#292a2a' : '#fafafa';
 
   // Inject the fullscreen/table CSS while the screen exists
   useEffect(() => {
@@ -306,7 +316,8 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
           />
         );
       }
-      return false; // default header text
+      // Default header text — returning args.children renders the built-in cell
+      return args.children;
     }
     const row = rowData as DiffRow;
     switch (colKey) {
@@ -339,7 +350,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
         return <span style={{ color, opacity: row.selected ? 1 : 0.4 }}>{text}</span>;
       }
     }
-    return false;
+    return args.children;
   };
 
   const sectionTitle: React.CSSProperties = {
@@ -358,32 +369,36 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
       contentLabel={`Push ${site.name || ''} to Kinsta`}
       shouldCloseOnOverlayClick={false}
       className="KinstaPushModalContent"
-      overlayClassName="KinstaPushModalOverlay"
-      hideCloseIcon={isPushing}
+      hideCloseIcon  /* we render the native Close inside the header instead */
     >
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: bg, color: fg }}>
-        {/* Header — centered title, FlyModal supplies the X */}
-        <div style={{
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        {/* Header — first-party ConnectDrawer pattern: icon + Title xl left,
+            Close (position static, margin auto) right, inside the same row */}
+        <header style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          gap: '10px',
-          padding: '18px 60px',
-          borderBottom: `1px solid ${border}`,
+          padding: '14px 20px',
+          borderBottom: border,
           flexShrink: 0,
         }}>
           <ConnectPushIcon aria-hidden />
-          <Title size="s" style={{ margin: 0 }}>
+          <Title tag="h1" size="xl" style={{ marginLeft: '10px' }}>
             Push {site.name || site.domain} to Kinsta
           </Title>
-        </div>
+          <Close
+            aria-label="Close Push Screen"
+            position="static"
+            style={{ marginLeft: 'auto' }}
+            onClick={handleRequestClose}
+          />
+        </header>
 
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
           {/* Left sidebar */}
           <div style={{
             width: '320px',
             flexShrink: 0,
-            borderRight: `1px solid ${border}`,
+            borderRight: border,
             padding: '40px 32px',
             display: 'flex',
             flexDirection: 'column',
@@ -397,7 +412,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                 alignItems: 'center',
                 gap: '12px',
                 padding: '12px 16px',
-                border: `1px solid ${border}`,
+                border: border,
                 borderRadius: '8px',
               }}>
                 <KinstaIcon size={28} />
@@ -457,8 +472,9 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
             </div>
           </div>
 
-          {/* Right pane */}
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          {/* Right pane — mirrors first-party MagicSyncViewer_Content:
+              height 100%, flex column, subtle contrast background */}
+          <div style={{ flex: '1 1 0', minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: contentBg }}>
             {isPushing || isComplete ? (
               /* Progress / completion view */
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 60px', gap: '18px' }}>
@@ -479,7 +495,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                     <div style={{ width: '100%', maxWidth: '420px' }}>
                       <ProgressBar progress={progress?.progress || 0} />
                     </div>
-                    <p style={{ fontSize: '13px', color: subtle, margin: 0 }}>{progress?.message}</p>
+                    <p style={{ fontSize: '13px', opacity: 0.65, margin: 0 }}>{progress?.message}</p>
                     <TextButton onClick={handleCancel} disabled={isCancelling}>
                       {isCancelling ? 'Cancelling…' : 'Cancel'}
                     </TextButton>
@@ -494,7 +510,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   padding: '12px 20px',
-                  borderBottom: `1px solid ${border}`,
+                  borderBottom: border,
                   flexShrink: 0,
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -505,8 +521,8 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                       onChange={(value: SyncMode) => setMode(value)}
                     />
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '13px', color: subtle }}>
-                    <span title="Files to sync">⟳ <strong style={{ color: fg }}>{addUpdateCount}</strong></span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '13px', opacity: 0.8 }}>
+                    <span title="Files to sync">⟳ <strong>{addUpdateCount}</strong></span>
                     <span style={{ opacity: 0.3 }}>|</span>
                     <span title="Files to delete" style={{ color: deleteCount ? '#d04d5c' : undefined }}>✕ {deleteCount}</span>
                     <span style={{ opacity: 0.3 }}>|</span>
@@ -520,47 +536,50 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                     fontSize: '12px',
                     color: '#fcc419',
                     backgroundColor: 'rgba(252,196,25,0.08)',
-                    borderBottom: `1px solid ${border}`,
+                    borderBottom: border,
                     flexShrink: 0,
                   }}>
                     Limited preview (no sizes / change detail) — run <code>brew install rsync</code> for the full diff.
                   </div>
                 )}
 
-                {/* File diff table */}
-                <div style={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative' }}>
-                  {previewLoading ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '10px', color: subtle }}>
-                      <Spinner /> Comparing with Kinsta…
-                    </div>
-                  ) : error ? (
-                    <div style={{ padding: '24px', color: '#d04d5c', fontSize: '13px', whiteSpace: 'pre-wrap' }}>
-                      {error}
-                    </div>
-                  ) : rows.length === 0 ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: subtle, fontSize: '14px' }}>
-                      Everything is in sync — no file changes to push.
-                    </div>
-                  ) : (
-                    <VirtualTable
-                      data={rows}
-                      headers={[
-                        { key: 'selected', value: '', flex: '0 0 44px' },
-                        { key: 'path', value: 'Filename', flex: '1 1 auto' },
-                        { key: 'localMtime', value: 'Local', flex: '0 0 160px' },
-                        { key: 'op', value: '→', flex: '0 0 44px' },
-                        { key: 'remote', value: `Kinsta (${envLabel})`, flex: '0 0 150px' },
-                      ]}
-                      rowKeyPropName="path"
-                      cellClassName="KinstaPushCell"
-                      rowClassName="KinstaPushRow"
-                      cellRenderer={cellRenderer}
-                      rowHeightSize="s"
-                      striped
-                      extraData={{ allSelected, someSelected }}
-                    />
-                  )}
-                </div>
+                {/* File diff table — direct child of the content column like
+                    first-party (VirtualTable's own container is height:100%) */}
+                {previewLoading ? (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', opacity: 0.65 }}>
+                    <Spinner /> Comparing with Kinsta…
+                  </div>
+                ) : error ? (
+                  <div style={{ flex: 1, padding: '24px', color: '#d04d5c', fontSize: '13px', whiteSpace: 'pre-wrap' }}>
+                    {error}
+                  </div>
+                ) : rows.length === 0 ? (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.65, fontSize: '14px' }}>
+                    Everything is in sync — no file changes to push.
+                  </div>
+                ) : (
+                  <VirtualTable
+                    data={rows}
+                    headers={[
+                      { key: 'selected', value: '', flex: '0 0 44px' },
+                      { key: 'path', value: 'Filename', flex: '1 1 auto' },
+                      { key: 'localMtime', value: 'Local', flex: '0 0 160px' },
+                      { key: 'op', value: '→', flex: '0 0 44px' },
+                      { key: 'remote', value: `Kinsta (${envLabel})`, flex: '0 0 150px' },
+                    ]}
+                    rowKeyPropName="path"
+                    cellClassName="KinstaPushCell"
+                    rowClassName="KinstaPushRow"
+                    cellRenderer={cellRenderer}
+                    rowHeightSize="s"
+                    rowHeaderHeightSize="m"
+                    headersWeight={500}
+                    headersCapitalize="none"
+                    overscan={20}
+                    striped
+                    extraData={{ allSelected, someSelected }}
+                  />
+                )}
               </>
             )}
           </div>
