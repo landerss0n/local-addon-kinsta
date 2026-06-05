@@ -200,6 +200,7 @@ The link drawer includes:
 
 - **macOS rsync is not GNU rsync**: newer macOS ships openrsync (`/usr/bin/rsync`), older ships rsync 2.6.9 — neither supports `--info=progress2`. `resolveRsync()` capability-probes flags (`rsync <flag> --version`, exit 0 = supported) and prefers Homebrew rsync when installed. openrsync gets `--progress` but emits no `to-check=` lines, so live file-% is unavailable — stage progress still advances. `brew install rsync` gives full live progress.
 
+- **Preferences Apply button can't be hidden via the API**: every add-on settings section gets Local's Apply footer (`AddonSettingsItem` has no `noApply`, though Local's own "Connected accounts" page uses an internal `noApply` flag). The wrapper does pass an undocumented `setApplyButtonDisabled(bool)` prop for dirty-state forms. We replicate `noApply` in `KinstaSettings` by injecting `[class*="SettingsPane_Footer"] { display: none; }` while mounted (removed on unmount; substring match survives CSS Modules hash changes).
 - `Button` component from local-components with `privateOptions` causes React error #130
 - `FlySelect` with `optionsLoader` doesn't work reliably — use static `options` instead
 - `<style>` tags in JSX render as text — use inline styles instead
