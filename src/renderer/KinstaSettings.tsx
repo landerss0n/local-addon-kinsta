@@ -196,7 +196,8 @@ const KinstaSettings: React.FC = () => {
           }}>
             <div style={infoRowStyle}>
               <span style={{ opacity: 0.6 }}>API key</span>
-              <span style={{ fontFamily: 'monospace', fontSize: '12px', opacity: 0.8, letterSpacing: '2px' }}>{apiKey}</span>
+              {/* Constant mask — never render the apiKey state here (it briefly holds the raw key during connect) */}
+              <span style={{ fontFamily: 'monospace', fontSize: '12px', opacity: 0.8, letterSpacing: '2px' }}>{'••••••••••••••••'}</span>
             </div>
             <div style={{ ...infoRowStyle, borderBottom: 'none' }}>
               <span style={{ opacity: 0.6 }}>Company ID</span>
