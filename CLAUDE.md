@@ -205,3 +205,4 @@ The link drawer includes:
 - `FlySelect` with `optionsLoader` doesn't work reliably — use static `options` instead
 - `<style>` tags in JSX render as text — use inline styles instead
 - `InputSearch` onChange receives event object, not value: `(e) => setValue(e.target.value)`
+- `Checkbox` onChange is the OPPOSITE: receives the new boolean, not an event — `(checked) => setValue(checked)`. Using `e.target.checked` throws after the component's internal visual state already toggled, so the box looks checked while your state stays false (caused the "include uploads did nothing" bug).

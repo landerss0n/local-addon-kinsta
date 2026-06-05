@@ -411,16 +411,18 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
                   borderRadius: '8px',
                   padding: '16px',
                 }}>
+                  {/* local-components Checkbox calls onChange with the new
+                      boolean, NOT a DOM event (unlike InputSearch) */}
                   <Checkbox
                     label="Include database"
                     checked={includeDatabase}
-                    onChange={(e: any) => setIncludeDatabase(e.target.checked)}
+                    onChange={(checked: boolean) => setIncludeDatabase(checked)}
                   />
                   <div style={{ height: '12px' }} />
                   <Checkbox
                     label="Include uploads folder"
                     checked={includeUploads}
-                    onChange={(e: any) => setIncludeUploads(e.target.checked)}
+                    onChange={(checked: boolean) => setIncludeUploads(checked)}
                   />
                   {isPush && (
                     <>
@@ -428,7 +430,7 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
                       <Checkbox
                         label="Create Kinsta backup first (files + database)"
                         checked={kinstaBackup}
-                        onChange={(e: any) => setKinstaBackup(e.target.checked)}
+                        onChange={(checked: boolean) => setKinstaBackup(checked)}
                       />
                     </>
                   )}
