@@ -371,6 +371,9 @@ interface ActiveSync {
 
 // One active sync per Local site
 const activeSyncs = new Map<string, ActiveSync>();
+// In-flight push-preview dry-runs (kept separate: previews never block syncs,
+// but a re-fired preview kills its predecessor)
+const activePreviews = new Map<string, ActiveSync>();
 
 interface RunOptions {
   // Pipe this file into the process' stdin (e.g. mysql < dump.sql)
@@ -580,25 +583,34 @@ export interface PushDiffRow {
   op: 'add' | 'update' | 'delete';
   isDir: boolean;
   sizeBytes: number;     // rsync %l; 0 for deletes/dirs/unknown
-  localMtime?: number;   // epoch ms from fs.stat (add/update only)
+  localMtime?: number;   // epoch ms from rsync %M (add/update only)
 }
 
-// Parse one line of `rsync -n --itemize-changes --out-format='%i|%l|%n'`.
+// rsync %M prints the source file's mtime as "YYYY/MM/DD-HH:MM:SS" (local TZ)
+function parseRsyncMtime(s: string): number | undefined {
+  if (!s || !s.includes('/')) return undefined;
+  const t = new Date(s.replace('-', ' ')).getTime();
+  return Number.isNaN(t) ? undefined : t;
+}
+
+// Parse one line of `rsync -n --itemize-changes --out-format='%i|%l|%M|%n'`.
+// The mtime comes from rsync itself (%M) — statting thousands of files in the
+// Electron main process would block Local's whole UI.
 // %i is the YXcstpoguax flag string:
 //   *deleting        — file will be removed on the receiver (--delete)
 //   <f+++++++++      — new file transferred to remote (push direction)
 //   <f.st......      — existing file, size/time changed → update
 //   cd+++++++++      — new directory
 //   .f / .d ...      — attrs only, no transfer → skip
-export function parseItemizeLine(line: string): Omit<PushDiffRow, 'localMtime'> | null {
+export function parseItemizeLine(line: string): PushDiffRow | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
 
-  // Deletions: with --out-format the line is "*deleting|<len>|<path>";
+  // Deletions: with --out-format the line is "*deleting|<len>|<mtime>|<path>";
   // without it rsync prints "*deleting   path". Handle both.
   if (trimmed.startsWith('*deleting')) {
     const rest = trimmed.includes('|')
-      ? trimmed.split('|').slice(2).join('|')               // %i|%l|%n form
+      ? trimmed.split('|').slice(3).join('|')               // %i|%l|%M|%n form
       : trimmed.slice('*deleting'.length).replace(/^\s+/, ''); // plain form
     if (!rest || rest === './') return null;
     const isDir = rest.endsWith('/');
@@ -606,10 +618,11 @@ export function parseItemizeLine(line: string): Omit<PushDiffRow, 'localMtime'> 
   }
 
   const parts = trimmed.split('|');
-  if (parts.length < 3) return null; // rsync chatter ("sending incremental file list", totals, ...)
+  if (parts.length < 4) return null; // rsync chatter ("sending incremental file list", totals, ...)
   const flags = parts[0];
   const sizeBytes = parseInt(parts[1], 10) || 0;
-  const filePath = parts.slice(2).join('|'); // paths may legitimately contain '|'
+  const localMtime = parseRsyncMtime(parts[2]);
+  const filePath = parts.slice(3).join('|'); // paths may legitimately contain '|'
 
   if (!filePath || filePath === './') return null;
   if (!/^[<>ch.*]/.test(flags) || flags.length < 2) return null;
@@ -626,18 +639,19 @@ export function parseItemizeLine(line: string): Omit<PushDiffRow, 'localMtime'> 
     op: isNew ? 'add' : 'update',
     isDir,
     sizeBytes: isDir ? 0 : sizeBytes,
+    ...(isDir ? {} : { localMtime }),
   };
 }
 
-export function parseItemizeOutput(stdout: string): Array<Omit<PushDiffRow, 'localMtime'>> {
-  return stdout.split('\n').map(parseItemizeLine).filter((r): r is Omit<PushDiffRow, 'localMtime'> => r !== null);
+export function parseItemizeOutput(stdout: string): PushDiffRow[] {
+  return stdout.split('\n').map(parseItemizeLine).filter((r): r is PushDiffRow => r !== null);
 }
 
 // Degraded fallback for rsync builds without --itemize-changes/--out-format
 // (openrsync): `rsync -n -v` prints one path per line plus "deleting X" lines.
-// Cannot distinguish add vs update, has no sizes.
-export function parseVerboseDryRun(stdout: string): Array<Omit<PushDiffRow, 'localMtime'>> {
-  const rows: Array<Omit<PushDiffRow, 'localMtime'>> = [];
+// Cannot distinguish add vs update, has no sizes or mtimes.
+export function parseVerboseDryRun(stdout: string): PushDiffRow[] {
+  const rows: PushDiffRow[] = [];
   for (const raw of stdout.split('\n')) {
     const line = raw.trim();
     if (!line || line === './') continue;
@@ -961,34 +975,34 @@ export default function (context: AddonMainContext): void {
     const rsync = resolveRsync();
     const degraded = !(rsync.supportsItemizeChanges && rsync.supportsOutFormat);
 
+    // %M carries the local file's mtime so we never stat thousands of files
+    // in the main process (which would block Local's entire UI)
     const args = ['-az', '--delete', '-n'];
     if (mode === 'newer') args.push('--update');
-    args.push(...(degraded ? ['-v'] : ['--itemize-changes', '--out-format=%i|%l|%n']));
+    args.push(...(degraded ? ['-v'] : ['--itemize-changes', '--out-format=%i|%l|%M|%n']));
     args.push(...excludeArgs, '-e', sshCommandForRsync, `${localPublicPath}/`, `${remoteHost}:~/public/`);
 
+    // One preview at a time per site: kill the previous dry-run if the
+    // renderer re-fires (mode/env/uploads toggles) so orphaned SSH sessions
+    // don't pile up against Kinsta's connection limit.
+    activePreviews.get(localSiteId)?.child?.kill('SIGTERM');
+    const preview: ActiveSync = { cancelled: false, child: null };
+    activePreviews.set(localSiteId, preview);
+
     try {
-      let stdout = '';
-      // Throwaway ActiveSync — previews are not cancellable (they're quick reads)
-      await runCommand({ cancelled: false, child: null }, rsync.bin, args, {
+      const chunks: string[] = [];
+      await runCommand(preview, rsync.bin, args, {
         okCodes: [23, 24],
-        onStdout: (chunk) => { stdout += chunk; },
+        onStdout: (chunk) => { chunks.push(chunk); },
       });
+      const stdout = chunks.join('');
 
-      const parsed = degraded ? parseVerboseDryRun(stdout) : parseItemizeOutput(stdout);
-
-      // Enrich adds/updates with the local file's mtime for the "Local" column
-      const rows: PushDiffRow[] = parsed.map((row) => {
-        if (row.op === 'delete' || row.isDir) return row;
-        try {
-          return { ...row, localMtime: fs.statSync(path.join(localPublicPath, row.path)).mtimeMs };
-        } catch (e) {
-          return row; // vanished since the dry-run — harmless
-        }
-      });
-
+      const rows = degraded ? parseVerboseDryRun(stdout) : parseItemizeOutput(stdout);
       return { success: true, rows, degraded, mode };
     } catch (error: any) {
       return { success: false, error: error.message, mode };
+    } finally {
+      if (activePreviews.get(localSiteId) === preview) activePreviews.delete(localSiteId);
     }
   });
 
@@ -1241,6 +1255,9 @@ export default function (context: AddonMainContext): void {
     const sendProgress = (progress: SyncProgress) => {
       event.sender.send('kinsta:syncProgress', { ...progress, siteId: localSiteId, mode: 'push' });
     };
+
+    // A leftover preview dry-run must not compete with the real push
+    activePreviews.get(localSiteId)?.child?.kill('SIGTERM');
 
     const sync: ActiveSync = { cancelled: false, child: null };
     activeSyncs.set(localSiteId, sync);

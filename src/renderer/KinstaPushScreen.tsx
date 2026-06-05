@@ -135,7 +135,10 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
   const [kinstaBackup, setKinstaBackup] = useState(true);
 
   const [rows, setRows] = useState<DiffRow[]>([]);
-  const [previewLoading, setPreviewLoading] = useState(false);
+  // starts true: a preview always runs on open, and the push button must stay
+  // disabled until it lands — otherwise a quick click pushes an empty file
+  // selection (selective path with files: [] silently skips all file changes)
+  const [previewLoading, setPreviewLoading] = useState(true);
   const [degraded, setDegraded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -272,14 +275,14 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
     setError(null);
     setProgress({ stage: 'starting', progress: 0, message: 'Starting push...' });
 
-    const everythingSelected = allSelected && rows.length > 0;
     const result = await ipcRenderer.invoke('kinsta:push', site.id, site, envInfo, {
       includeDatabase,
       includeUploads,
       kinstaBackup,
       mode,
       // Full selection + "all modified" = the plain rsync --delete fast path
-      ...(everythingSelected && mode === 'all' ? {} : {
+      // allSelected requires rows.length > 0, so this never sends an empty diff
+      ...(allSelected && mode === 'all' ? {} : {
         files: selectedRows.filter(r => r.op !== 'delete').map(r => r.path),
         deletions: selectedRows.filter(r => r.op === 'delete').map(r => r.path),
       }),
@@ -600,7 +603,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
           </Title>
           <p style={{ color: '#888', fontSize: '14px', marginBottom: '10px', lineHeight: 1.5 }}>
             {addUpdateCount > 0 && <>{addUpdateCount} file(s) will be synced. </>}
-            {deleteCount > 0 && <strong style={{ color: '#d04d5c' }}>{deleteCount} file(s) will be deleted on Kinsta. </strong>}
+            {deleteCount > 0 && <strong style={{ color: '#d04d5c' }}>{deleteCount} item(s) will be deleted on Kinsta — folders with their entire contents. </strong>}
             {includeDatabase && <>The {isLive ? 'production' : 'staging'} database will be replaced with your local database. </>}
           </p>
           {isLive && (

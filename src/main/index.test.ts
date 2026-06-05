@@ -116,9 +116,9 @@ describe('describePartialTransfer', () => {
 });
 
 describe('rsync progress', () => {
-  const gnu: RsyncInfo = { bin: 'rsync', supportsProgress2: true, supportsProgress: true };
-  const openrsync: RsyncInfo = { bin: '/usr/bin/rsync', supportsProgress2: false, supportsProgress: true };
-  const ancient: RsyncInfo = { bin: 'rsync', supportsProgress2: false, supportsProgress: false };
+  const gnu: RsyncInfo = { bin: 'rsync', supportsProgress2: true, supportsProgress: true, supportsItemizeChanges: true, supportsOutFormat: true };
+  const openrsync: RsyncInfo = { bin: '/usr/bin/rsync', supportsProgress2: false, supportsProgress: true, supportsItemizeChanges: false, supportsOutFormat: false };
+  const ancient: RsyncInfo = { bin: 'rsync', supportsProgress2: false, supportsProgress: false, supportsItemizeChanges: false, supportsOutFormat: false };
 
   it('picks the best progress flag per rsync flavor', () => {
     expect(rsyncProgressArgs(gnu)).toEqual(['--info=progress2']);
@@ -173,28 +173,31 @@ describe('searchReplacePairs', () => {
   });
 });
 
-describe('parseItemizeLine (push preview diff)', () => {
-  it('classifies a brand new file as add', () => {
-    expect(parseItemizeLine('<f+++++++++|1234|wp-content/themes/x/a.php')).toEqual({
+describe('parseItemizeLine (push preview diff, %i|%l|%M|%n format)', () => {
+  it('classifies a brand new file as add with mtime from %M', () => {
+    const row = parseItemizeLine('<f+++++++++|1234|2026/06/05-12:30:00|wp-content/themes/x/a.php');
+    expect(row).toMatchObject({
       path: 'wp-content/themes/x/a.php', op: 'add', isDir: false, sizeBytes: 1234,
     });
+    expect(row?.localMtime).toBe(new Date('2026/06/05 12:30:00').getTime());
   });
 
   it('classifies a changed file as update', () => {
-    expect(parseItemizeLine('<f.st......|987|style.css')).toEqual({
+    expect(parseItemizeLine('<f.st......|987|2025/01/02-08:00:00|style.css')).toMatchObject({
       path: 'style.css', op: 'update', isDir: false, sizeBytes: 987,
     });
-    expect(parseItemizeLine('<fcst......|10|x.js')?.op).toBe('update');
+    expect(parseItemizeLine('<fcst......|10|2025/01/02-08:00:00|x.js')?.op).toBe('update');
   });
 
-  it('classifies a new directory as add + isDir with size 0', () => {
-    expect(parseItemizeLine('cd+++++++++|0|wp-content/uploads/2026/')).toEqual({
+  it('classifies a new directory as add + isDir with size 0 and no mtime', () => {
+    const row = parseItemizeLine('cd+++++++++|0|2026/06/05-12:00:00|wp-content/uploads/2026/');
+    expect(row).toEqual({
       path: 'wp-content/uploads/2026', op: 'add', isDir: true, sizeBytes: 0,
     });
   });
 
   it('parses deletions in both output forms', () => {
-    expect(parseItemizeLine('*deleting|0|old/file.php')).toEqual({
+    expect(parseItemizeLine('*deleting|0|2024/01/01-00:00:00|old/file.php')).toEqual({
       path: 'old/file.php', op: 'delete', isDir: false, sizeBytes: 0,
     });
     expect(parseItemizeLine('*deleting   old/dir/')).toEqual({
@@ -203,30 +206,36 @@ describe('parseItemizeLine (push preview diff)', () => {
   });
 
   it('skips attribute-only changes and chatter', () => {
-    expect(parseItemizeLine('.f...p.....|10|x.php')).toBeNull();
-    expect(parseItemizeLine('.d..t......|0|somedir/')).toBeNull();
+    expect(parseItemizeLine('.f...p.....|10|2025/01/01-00:00:00|x.php')).toBeNull();
+    expect(parseItemizeLine('.d..t......|0|2025/01/01-00:00:00|somedir/')).toBeNull();
     expect(parseItemizeLine('sending incremental file list')).toBeNull();
     expect(parseItemizeLine('sent 1,024 bytes  received 100 bytes')).toBeNull();
     expect(parseItemizeLine('')).toBeNull();
-    expect(parseItemizeLine('<d.........|0|./')).toBeNull();
+    expect(parseItemizeLine('<d.........|0|2025/01/01-00:00:00|./')).toBeNull();
   });
 
   it('keeps | characters inside filenames intact', () => {
-    expect(parseItemizeLine('<f+++++++++|5|weird|name.txt')?.path).toBe('weird|name.txt');
+    expect(parseItemizeLine('<f+++++++++|5|2025/01/01-00:00:00|weird|name.txt')?.path).toBe('weird|name.txt');
+  });
+
+  it('survives an unparseable %M field', () => {
+    const row = parseItemizeLine('<f+++++++++|5|?|x.txt');
+    expect(row).toMatchObject({ path: 'x.txt', op: 'add' });
+    expect(row?.localMtime).toBeUndefined();
   });
 
   it('parseItemizeOutput maps a whole block', () => {
     const out = [
       'sending incremental file list',
-      '<f+++++++++|100|a.txt',
-      '*deleting|0|b.txt',
-      '.f...p.....|1|c.txt',
+      '<f+++++++++|100|2026/06/05-10:00:00|a.txt',
+      '*deleting|0|2024/01/01-00:00:00|b.txt',
+      '.f...p.....|1|2025/01/01-00:00:00|c.txt',
       'sent 99 bytes',
     ].join('\n');
-    expect(parseItemizeOutput(out)).toEqual([
-      { path: 'a.txt', op: 'add', isDir: false, sizeBytes: 100 },
-      { path: 'b.txt', op: 'delete', isDir: false, sizeBytes: 0 },
-    ]);
+    const rows = parseItemizeOutput(out);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ path: 'a.txt', op: 'add', sizeBytes: 100 });
+    expect(rows[1]).toEqual({ path: 'b.txt', op: 'delete', isDir: false, sizeBytes: 0 });
   });
 });
 
