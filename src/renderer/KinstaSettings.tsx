@@ -17,6 +17,18 @@ const KinstaSettings: React.FC = () => {
     loadConfig();
   }, []);
 
+  // Local's own account page ("Connected accounts") removes the whole Apply
+  // footer via an internal noApply flag that isn't exposed to add-on settings
+  // sections. Replicate it: hide the footer (button + divider) while our
+  // section is mounted — the style is removed on unmount, so other preference
+  // pages keep their Apply. Substring match survives CSS Modules hash changes.
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = '[class*="SettingsPane_Footer"] { display: none; }';
+    document.head.appendChild(style);
+    return () => { document.head.removeChild(style); };
+  }, []);
+
   const loadConfig = async () => {
     const config = await ipcRenderer.invoke('kinsta:getConfig');
     if (config.apiKey) {
