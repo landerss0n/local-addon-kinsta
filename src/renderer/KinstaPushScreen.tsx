@@ -372,25 +372,25 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
       hideCloseIcon  /* we render the native Close inside the header instead */
     >
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        {/* Header — first-party ConnectDrawer pattern: icon + Title xl left,
-            Close (position static, margin auto) right, inside the same row */}
+        {/* Header — centered title with the Close on the right (reference style) */}
         <header style={{
+          position: 'relative',
           display: 'flex',
           alignItems: 'center',
-          padding: '14px 20px',
+          justifyContent: 'center',
+          gap: '8px',
+          height: '52px',
+          padding: '0 60px',
           borderBottom: border,
           flexShrink: 0,
         }}>
           <ConnectPushIcon aria-hidden />
-          <Title tag="h1" size="xl" style={{ marginLeft: '10px' }}>
+          <Title tag="h1" size="s" style={{ margin: 0 }}>
             Push {site.name || site.domain} to Kinsta
           </Title>
-          <Close
-            aria-label="Close Push Screen"
-            position="static"
-            style={{ marginLeft: 'auto' }}
-            onClick={handleRequestClose}
-          />
+          <div style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)' }}>
+            <Close aria-label="Close Push Screen" position="static" onClick={handleRequestClose} />
+          </div>
         </header>
 
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
@@ -410,8 +410,9 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: '12px',
-                padding: '12px 16px',
+                padding: '14px 16px',
                 border: border,
                 borderRadius: '8px',
               }}>
@@ -432,10 +433,11 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                 ]))}
                 onChange={(value: string) => setSelectedEnvId(value)}
                 disabled={isPushing}
+                style={{ width: '100%' }}
               />
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: 'fit-content', margin: '0 auto' }}>
               {/* local-components Checkbox passes the new boolean to onChange */}
               <Checkbox
                 label="Include database"
