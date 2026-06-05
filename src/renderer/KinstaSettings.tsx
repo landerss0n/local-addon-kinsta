@@ -194,6 +194,10 @@ const KinstaSettings: React.FC = () => {
             padding: '4px 16px',
             marginBottom: '24px',
           }}>
+            <div style={infoRowStyle}>
+              <span style={{ opacity: 0.6 }}>API key</span>
+              <span style={{ fontFamily: 'monospace', fontSize: '12px', opacity: 0.8, letterSpacing: '2px' }}>{apiKey}</span>
+            </div>
             <div style={{ ...infoRowStyle, borderBottom: 'none' }}>
               <span style={{ opacity: 0.6 }}>Company ID</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
