@@ -6,7 +6,6 @@ const { ipcRenderer } = window.require('electron');
 const KinstaSettings: React.FC = () => {
   const [apiKey, setApiKey] = useState('');
   const [companyId, setCompanyId] = useState('');
-  const [companyName, setCompanyName] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +22,6 @@ const KinstaSettings: React.FC = () => {
     if (config.apiKey) {
       setApiKey('••••••••••••••••');
       setCompanyId(config.companyId || '');
-      setCompanyName(config.companyName || null);
       setIsConnected(true);
     }
   };
@@ -47,7 +45,6 @@ const KinstaSettings: React.FC = () => {
     if (result.success) {
       setIsConnected(true);
       setApiKey('••••••••••••••••');
-      setCompanyName(result.company?.name || result.company?.display_name || null);
       setSuccess('Connected to Kinsta!');
     } else {
       setError(result.error || 'Could not connect to Kinsta');
@@ -61,7 +58,6 @@ const KinstaSettings: React.FC = () => {
     setIsConnected(false);
     setApiKey('');
     setCompanyId('');
-    setCompanyName(null);
     setSuccess(null);
     setConfirmDisconnect(false);
   };
@@ -198,10 +194,6 @@ const KinstaSettings: React.FC = () => {
             padding: '4px 16px',
             marginBottom: '24px',
           }}>
-            <div style={infoRowStyle}>
-              <span style={{ opacity: 0.6 }}>Company</span>
-              <span style={{ fontWeight: 600 }}>{companyName || '—'}</span>
-            </div>
             <div style={{ ...infoRowStyle, borderBottom: 'none' }}>
               <span style={{ opacity: 0.6 }}>Company ID</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

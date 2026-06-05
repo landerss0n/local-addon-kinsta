@@ -88,7 +88,6 @@ const EXCLUDE_PATTERNS = [
 
 interface KinstaConfig {
   companyId?: string;
-  companyName?: string;
 }
 
 interface SyncHistoryEntry {
@@ -680,9 +679,9 @@ export default function (context: AddonMainContext): void {
         if (!saved) {
           return { success: false, error: 'Could not save API key securely. Encryption not available.' };
         }
-        // Company name is shown in settings — saved defensively (field may be absent)
-        const companyName = response.data.company.name || response.data.company.display_name || undefined;
-        saveConfig({ companyId, companyName });
+        // Note: the /sites response's `company` object only contains `sites` —
+        // the Kinsta API has no endpoint that exposes the company name.
+        saveConfig({ companyId });
         return { success: true, company: response.data.company };
       }
       return { success: false, error: 'Invalid response from Kinsta API' };
