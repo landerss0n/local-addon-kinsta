@@ -15,6 +15,24 @@ Sync WordPress sites between [Local](https://localwp.com) and [Kinsta](https://k
 - **Cache clearing** — clears Kinsta's page, edge and CDN caches after a push (and on demand)
 - **Site search** — quickly find the right site even with 100+ sites on the account
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/02-push-preview.png" alt="Push preview — fullscreen per-file diff with selective sync" width="900">
+</p>
+<p align="center"><sub><b>Push preview</b> — a Magic Sync-style fullscreen diff: pick the environment, untick any file, choose <i>only newer</i> vs <i>all modified</i>, then push.</sub></p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/01-kinsta-page.png" alt="Kinsta Sync page"></td>
+    <td width="50%"><img src="docs/screenshots/03-link-drawer.png" alt="Link a Kinsta site"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Home</b> — link status, environments, and recent sync history under <b>More&nbsp;→&nbsp;Kinsta&nbsp;Sync</b>.</sub></td>
+    <td align="center"><sub><b>Linking</b> — search across every Kinsta site on your account.</sub></td>
+  </tr>
+</table>
+
 ## Requirements
 
 - **macOS or Linux** (Windows is not supported — the add-on shells out to `rsync`/`ssh`)
