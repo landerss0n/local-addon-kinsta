@@ -123,7 +123,9 @@ const formatMb = (bytes: number): string => {
 const formatMtime = (ms?: number): string => {
   if (!ms) return '';
   const d = new Date(ms);
-  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return (
+    d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  );
 };
 
 const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) => {
@@ -155,8 +157,10 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
   // background/text. The file-list area gets the same subtle contrast
   // background first-party MagicSyncViewer_Content uses (#fafafa / #292a2a).
   const border = '1px solid rgba(127, 127, 127, 0.25)';
-  const isDark = typeof document !== 'undefined' &&
-    parseInt((getComputedStyle(document.body).backgroundColor.match(/\d+/) || ['255'])[0], 10) < 128;
+  const isDark =
+    typeof document !== 'undefined' &&
+    parseInt((getComputedStyle(document.body).backgroundColor.match(/\d+/) || ['255'])[0], 10) <
+      128;
   const contentBg = isDark ? '#292a2a' : '#fafafa';
 
   // Inject the fullscreen/table CSS while the screen exists
@@ -164,7 +168,9 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
     const style = document.createElement('style');
     style.textContent = FULLSCREEN_CSS;
     document.head.appendChild(style);
-    return () => { document.head.removeChild(style); };
+    return () => {
+      document.head.removeChild(style);
+    };
   }, []);
 
   useEffect(() => {
@@ -174,6 +180,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
       setCompletionWarning(null);
       loadEnvironments();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load environments only when the screen opens / site link changes
   }, [isOpen, siteLink]);
 
   // Live progress (events carry siteId + mode so other sites/pulls are ignored)
@@ -188,14 +195,17 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
       }
     };
     ipcRenderer.on('kinsta:syncProgress', handler);
-    return () => { ipcRenderer.removeListener('kinsta:syncProgress', handler); };
+    return () => {
+      ipcRenderer.removeListener('kinsta:syncProgress', handler);
+    };
   }, [site.id]);
 
   const loadEnvironments = async () => {
     const result = await ipcRenderer.invoke('kinsta:getEnvironments', siteLink.kinstaSiteId);
     if (result.success && result.environments.length > 0) {
-      const envs = [...result.environments].sort((a: Environment, b: Environment) =>
-        Number(b.is_premium) - Number(a.is_premium));
+      const envs = [...result.environments].sort(
+        (a: Environment, b: Environment) => Number(b.is_premium) - Number(a.is_premium),
+      );
       setEnvironments(envs);
       setSelectedEnvId(envs[0].id);
     } else if (!result.success) {
@@ -204,7 +214,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
   };
 
   const getEnvInfo = (envId: string): EnvironmentInfo | null => {
-    const env = environments.find(e => e.id === envId);
+    const env = environments.find((e) => e.id === envId);
     if (!env || !siteLink) return null;
     const siteName = siteLink.kinstaSiteSlug || siteLink.kinstaSiteName;
     return {
@@ -226,7 +236,10 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
     setError(null);
     const timer = setTimeout(async () => {
       const envInfo = getEnvInfo(selectedEnvId);
-      if (!envInfo) { setPreviewLoading(false); return; }
+      if (!envInfo) {
+        setPreviewLoading(false);
+        return;
+      }
       const result = await ipcRenderer.invoke('kinsta:pushPreview', site.id, site, envInfo, {
         mode,
         includeUploads,
@@ -243,25 +256,31 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
         setRows([]);
       }
     }, 250);
-    return () => { clearTimeout(timer); };
+    return () => {
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- isPushing/isComplete are read-only guards and getEnvInfo is read inside the timeout — re-run only on the listed preview inputs
   }, [isOpen, selectedEnvId, mode, includeUploads, environments]);
 
-  const selectedRows = rows.filter(r => r.selected);
-  const addUpdateCount = selectedRows.filter(r => r.op !== 'delete').length;
-  const deleteCount = selectedRows.filter(r => r.op === 'delete').length;
-  const totalBytes = selectedRows.reduce((sum, r) => sum + (r.op === 'delete' ? 0 : r.sizeBytes), 0);
-  const allSelected = rows.length > 0 && rows.every(r => r.selected);
-  const someSelected = rows.some(r => r.selected);
+  const selectedRows = rows.filter((r) => r.selected);
+  const addUpdateCount = selectedRows.filter((r) => r.op !== 'delete').length;
+  const deleteCount = selectedRows.filter((r) => r.op === 'delete').length;
+  const totalBytes = selectedRows.reduce(
+    (sum, r) => sum + (r.op === 'delete' ? 0 : r.sizeBytes),
+    0,
+  );
+  const allSelected = rows.length > 0 && rows.every((r) => r.selected);
+  const someSelected = rows.some((r) => r.selected);
 
-  const env = environments.find(e => e.id === selectedEnvId);
+  const env = environments.find((e) => e.id === selectedEnvId);
   const isLive = !!env?.is_premium;
   const envLabel = env ? (env.is_premium ? 'Production' : 'Staging') : '';
 
   const toggleAll = (checked: boolean) => {
-    setRows(rs => rs.map(r => ({ ...r, selected: checked })));
+    setRows((rs) => rs.map((r) => ({ ...r, selected: checked })));
   };
   const toggleRow = (rowPath: string, checked: boolean) => {
-    setRows(rs => rs.map(r => (r.path === rowPath ? { ...r, selected: checked } : r)));
+    setRows((rs) => rs.map((r) => (r.path === rowPath ? { ...r, selected: checked } : r)));
   };
 
   const handlePushClick = () => setShowConfirmModal(true);
@@ -269,7 +288,10 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
   const executePush = async () => {
     setShowConfirmModal(false);
     const envInfo = getEnvInfo(selectedEnvId);
-    if (!envInfo) { setError('Please select an environment'); return; }
+    if (!envInfo) {
+      setError('Please select an environment');
+      return;
+    }
 
     setIsPushing(true);
     setError(null);
@@ -282,10 +304,12 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
       mode,
       // Full selection + "all modified" = the plain rsync --delete fast path
       // allSelected requires rows.length > 0, so this never sends an empty diff
-      ...(allSelected && mode === 'all' ? {} : {
-        files: selectedRows.filter(r => r.op !== 'delete').map(r => r.path),
-        deletions: selectedRows.filter(r => r.op === 'delete').map(r => r.path),
-      }),
+      ...(allSelected && mode === 'all'
+        ? {}
+        : {
+            files: selectedRows.filter((r) => r.op !== 'delete').map((r) => r.path),
+            deletions: selectedRows.filter((r) => r.op === 'delete').map((r) => r.path),
+          }),
     });
 
     if (result.success) {
@@ -333,8 +357,11 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
         );
       case 'path':
         return (
-          <span style={{ fontFamily: 'monospace', fontSize: '12px', opacity: row.selected ? 1 : 0.4 }}>
-            {row.path}{row.isDir ? '/' : ''}
+          <span
+            style={{ fontFamily: 'monospace', fontSize: '12px', opacity: row.selected ? 1 : 0.4 }}
+          >
+            {row.path}
+            {row.isDir ? '/' : ''}
           </span>
         );
       case 'localMtime':
@@ -349,7 +376,12 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
         return <span style={{ color: '#d04d5c', fontWeight: 700 }}>✕</span>;
       case 'remote': {
         const color = row.op === 'add' ? '#50c083' : row.op === 'delete' ? '#d04d5c' : undefined;
-        const text = row.op === 'add' ? 'Will be added' : row.op === 'delete' ? 'Will be deleted' : 'Will be updated';
+        const text =
+          row.op === 'add'
+            ? 'Will be added'
+            : row.op === 'delete'
+              ? 'Will be deleted'
+              : 'Will be updated';
         return <span style={{ color, opacity: row.selected ? 1 : 0.4 }}>{text}</span>;
       }
     }
@@ -372,55 +404,75 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
       contentLabel={`Push ${site.name || ''} to Kinsta`}
       shouldCloseOnOverlayClick={false}
       className="KinstaPushModalContent"
-      hideCloseIcon  /* we render the native Close inside the header instead */
+      hideCloseIcon /* we render the native Close inside the header instead */
     >
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         {/* Header — centered title with the Close on the right (reference style) */}
-        <header style={{
-          position: 'relative',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '8px',
-          height: '52px',
-          padding: '0 60px',
-          borderBottom: border,
-          flexShrink: 0,
-        }}>
+        <header
+          style={{
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            height: '52px',
+            padding: '0 60px',
+            borderBottom: border,
+            flexShrink: 0,
+          }}
+        >
           <ConnectPushIcon aria-hidden />
           <Title tag="h1" size="s" style={{ margin: 0 }}>
             Push {site.name || site.domain} to Kinsta
           </Title>
-          <div style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)' }}>
+          <div
+            style={{
+              position: 'absolute',
+              right: '16px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+            }}
+          >
             <Close aria-label="Close Push Screen" position="static" onClick={handleRequestClose} />
           </div>
         </header>
 
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
           {/* Left sidebar */}
-          <div style={{
-            width: '320px',
-            flexShrink: 0,
-            borderRight: border,
-            padding: '40px 32px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '28px',
-            overflowY: 'auto',
-          }}>
+          <div
+            style={{
+              width: '320px',
+              flexShrink: 0,
+              borderRight: border,
+              padding: '40px 32px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '28px',
+              overflowY: 'auto',
+            }}
+          >
             <div>
               <div style={sectionTitle}>Push site to</div>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '12px',
-                padding: '14px 16px',
-                border: border,
-                borderRadius: '8px',
-              }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '12px',
+                  padding: '14px 16px',
+                  border: border,
+                  borderRadius: '8px',
+                }}
+              >
                 <KinstaIcon size={28} />
-                <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span
+                  style={{
+                    fontWeight: 600,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
                   {siteLink.kinstaSiteName}
                 </span>
               </div>
@@ -430,17 +482,27 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
               <div style={sectionTitle}>Select environment</div>
               <FlySelect
                 value={selectedEnvId}
-                options={Object.fromEntries(environments.map(e => [
-                  e.id,
-                  e.is_premium ? 'Production' : `Staging (${e.display_name})`,
-                ]))}
+                options={Object.fromEntries(
+                  environments.map((e) => [
+                    e.id,
+                    e.is_premium ? 'Production' : `Staging (${e.display_name})`,
+                  ]),
+                )}
                 onChange={(value: string) => setSelectedEnvId(value)}
                 disabled={isPushing}
                 style={{ width: '100%' }}
               />
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: 'fit-content', margin: '0 auto' }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                width: 'fit-content',
+                margin: '0 auto',
+              }}
+            >
               {/* local-components Checkbox passes the new boolean to onChange */}
               <Checkbox
                 label="Include database"
@@ -470,7 +532,12 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
               )}
               <PrimaryButton
                 onClick={handlePushClick}
-                disabled={isPushing || previewLoading || isComplete || (selectedRows.length === 0 && !includeDatabase)}
+                disabled={
+                  isPushing ||
+                  previewLoading ||
+                  isComplete ||
+                  (selectedRows.length === 0 && !includeDatabase)
+                }
               >
                 Push to Kinsta
               </PrimaryButton>
@@ -479,16 +546,44 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
 
           {/* Right pane — mirrors first-party MagicSyncViewer_Content:
               height 100%, flex column, subtle contrast background */}
-          <div style={{ flex: '1 1 0', minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: contentBg }}>
+          <div
+            style={{
+              flex: '1 1 0',
+              minWidth: 0,
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              backgroundColor: contentBg,
+            }}
+          >
             {isPushing || isComplete ? (
               /* Progress / completion view */
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 60px', gap: '18px' }}>
+              <div
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 60px',
+                  gap: '18px',
+                }}
+              >
                 {isComplete ? (
                   <>
                     <div style={{ fontSize: '42px' }}>✓</div>
-                    <Title size="m" style={{ margin: 0 }}>Push complete!</Title>
+                    <Title size="m" style={{ margin: 0 }}>
+                      Push complete!
+                    </Title>
                     {completionWarning && (
-                      <p style={{ fontSize: '13px', color: '#fcc419', textAlign: 'center', maxWidth: '460px' }}>
+                      <p
+                        style={{
+                          fontSize: '13px',
+                          color: '#fcc419',
+                          textAlign: 'center',
+                          maxWidth: '460px',
+                        }}
+                      >
                         {completionWarning}
                       </p>
                     )}
@@ -500,7 +595,9 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                     <div style={{ width: '100%', maxWidth: '420px' }}>
                       <ProgressBar progress={progress?.progress || 0} />
                     </div>
-                    <p style={{ fontSize: '13px', opacity: 0.65, margin: 0 }}>{progress?.message}</p>
+                    <p style={{ fontSize: '13px', opacity: 0.65, margin: 0 }}>
+                      {progress?.message}
+                    </p>
                     <TextButton onClick={handleCancel} disabled={isCancelling}>
                       {isCancelling ? 'Cancelling…' : 'Cancel'}
                     </TextButton>
@@ -510,14 +607,16 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
             ) : (
               <>
                 {/* Toolbar: mode select + counts */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '12px 20px',
-                  borderBottom: border,
-                  flexShrink: 0,
-                }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 20px',
+                    borderBottom: border,
+                    flexShrink: 0,
+                  }}
+                >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontWeight: 600, fontSize: '14px' }}>Push</span>
                     <FlySelect
@@ -526,40 +625,84 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                       onChange={(value: SyncMode) => setMode(value)}
                     />
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '13px', opacity: 0.8 }}>
-                    <span title="Files to sync">⟳ <strong>{addUpdateCount}</strong></span>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '14px',
+                      fontSize: '13px',
+                      opacity: 0.8,
+                    }}
+                  >
+                    <span title="Files to sync">
+                      ⟳ <strong>{addUpdateCount}</strong>
+                    </span>
                     <span style={{ opacity: 0.3 }}>|</span>
-                    <span title="Files to delete" style={{ color: deleteCount ? '#d04d5c' : undefined }}>✕ {deleteCount}</span>
+                    <span
+                      title="Files to delete"
+                      style={{ color: deleteCount ? '#d04d5c' : undefined }}
+                    >
+                      ✕ {deleteCount}
+                    </span>
                     <span style={{ opacity: 0.3 }}>|</span>
                     <span>{formatMb(totalBytes)}</span>
                   </div>
                 </div>
 
                 {degraded && (
-                  <div style={{
-                    padding: '8px 20px',
-                    fontSize: '12px',
-                    color: '#fcc419',
-                    backgroundColor: 'rgba(252,196,25,0.08)',
-                    borderBottom: border,
-                    flexShrink: 0,
-                  }}>
-                    Limited preview (no sizes / change detail) — run <code>brew install rsync</code> for the full diff.
+                  <div
+                    style={{
+                      padding: '8px 20px',
+                      fontSize: '12px',
+                      color: '#fcc419',
+                      backgroundColor: 'rgba(252,196,25,0.08)',
+                      borderBottom: border,
+                      flexShrink: 0,
+                    }}
+                  >
+                    Limited preview (no sizes / change detail) — run <code>brew install rsync</code>{' '}
+                    for the full diff.
                   </div>
                 )}
 
                 {/* File diff table — direct child of the content column like
                     first-party (VirtualTable's own container is height:100%) */}
                 {previewLoading ? (
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', opacity: 0.65 }}>
+                  <div
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '10px',
+                      opacity: 0.65,
+                    }}
+                  >
                     <Spinner /> Comparing with Kinsta…
                   </div>
                 ) : error ? (
-                  <div style={{ flex: 1, padding: '24px', color: '#d04d5c', fontSize: '13px', whiteSpace: 'pre-wrap' }}>
+                  <div
+                    style={{
+                      flex: 1,
+                      padding: '24px',
+                      color: '#d04d5c',
+                      fontSize: '13px',
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
                     {error}
                   </div>
                 ) : rows.length === 0 ? (
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.65, fontSize: '14px' }}>
+                  <div
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: 0.65,
+                      fontSize: '14px',
+                    }}
+                  >
                     Everything is in sync — no file changes to push.
                   </div>
                 ) : (
@@ -603,8 +746,18 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
           </Title>
           <p style={{ color: '#888', fontSize: '14px', marginBottom: '10px', lineHeight: 1.5 }}>
             {addUpdateCount > 0 && <>{addUpdateCount} file(s) will be synced. </>}
-            {deleteCount > 0 && <strong style={{ color: '#d04d5c' }}>{deleteCount} item(s) will be deleted on Kinsta — folders with their entire contents. </strong>}
-            {includeDatabase && <>The {isLive ? 'production' : 'staging'} database will be replaced with your local database. </>}
+            {deleteCount > 0 && (
+              <strong style={{ color: '#d04d5c' }}>
+                {deleteCount} item(s) will be deleted on Kinsta — folders with their entire
+                contents.{' '}
+              </strong>
+            )}
+            {includeDatabase && (
+              <>
+                The {isLive ? 'production' : 'staging'} database will be replaced with your local
+                database.{' '}
+              </>
+            )}
           </p>
           {isLive && (
             <p style={{ color: '#d04d5c', fontSize: '13px', marginBottom: '24px' }}>

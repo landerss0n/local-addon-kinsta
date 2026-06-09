@@ -25,10 +25,7 @@ export default function (context: AddonRendererContext): void {
         key="kinsta-route"
         path="/main/site-info/:siteId/kinsta"
         render={() => (
-          <KinstaPage
-            site={routeChildrenProps.site}
-            siteStatus={routeChildrenProps.siteStatus}
-          />
+          <KinstaPage site={routeChildrenProps.site} siteStatus={routeChildrenProps.siteStatus} />
         )}
       />
     );
@@ -57,13 +54,17 @@ export default function (context: AddonRendererContext): void {
   });
 
   // Add Kinsta settings to preferences
-  hooks.addFilter('preferencesMenuItems', (items: AddonSettingsItem[]) => {
-    const kinstaItem: AddonSettingsItem = {
-      path: 'kinsta',
-      displayName: 'Kinsta Sync',
-      sections: KinstaSettings,
-      onApply: () => {},
-    };
-    return [...items, kinstaItem];
-  }, 10);
+  hooks.addFilter(
+    'preferencesMenuItems',
+    (items: AddonSettingsItem[]) => {
+      const kinstaItem: AddonSettingsItem = {
+        path: 'kinsta',
+        displayName: 'Kinsta Sync',
+        sections: KinstaSettings,
+        onApply: () => {},
+      };
+      return [...items, kinstaItem];
+    },
+    10,
+  );
 }

@@ -31,9 +31,17 @@ After every successful DB sync (pull, overwrite push, merge push) we store a sna
 ```json
 {
   "createdAt": "ISO",
-  "posts":   { "<ID>": { "hash": "…", "modified": "post_modified_gmt", "title": "…", "type": "page", "status": "publish" } },
+  "posts": {
+    "<ID>": {
+      "hash": "…",
+      "modified": "post_modified_gmt",
+      "title": "…",
+      "type": "page",
+      "status": "publish"
+    }
+  },
   "options": { "<option_name>": "<hash>" },
-  "terms":   { "<term_id>": { "hash": "…", "name": "…", "taxonomy": "category" } }
+  "terms": { "<term_id>": { "hash": "…", "name": "…", "taxonomy": "category" } }
 }
 ```
 
@@ -61,17 +69,17 @@ the bundled phar + MySQL socket; remotely via SSH). Each side returns only
 
 Per unit, compare local-vs-baseline and remote-vs-baseline:
 
-| Local | Remote | Result |
-|---|---|---|
-| changed | unchanged | **push** (pre-checked) |
-| unchanged | changed | **keep theirs** (not pushed, shown informatively) |
-| changed | changed | **conflict** — user picks Mine/Theirs per row |
-| new | — | **insert**; ID collision with a new remote row → conflict |
-| — | new | keep theirs |
-| deleted locally | unchanged | **delete remote** (unchecked by default) |
-| deleted locally | changed | **conflict** (delete vs their edit) |
-| unchanged | deleted remotely | stays deleted (shown informatively) |
-| changed | deleted remotely | **conflict** (my edit vs their delete) |
+| Local           | Remote           | Result                                                    |
+| --------------- | ---------------- | --------------------------------------------------------- |
+| changed         | unchanged        | **push** (pre-checked)                                    |
+| unchanged       | changed          | **keep theirs** (not pushed, shown informatively)         |
+| changed         | changed          | **conflict** — user picks Mine/Theirs per row             |
+| new             | —                | **insert**; ID collision with a new remote row → conflict |
+| —               | new              | keep theirs                                               |
+| deleted locally | unchanged        | **delete remote** (unchecked by default)                  |
+| deleted locally | changed          | **conflict** (delete vs their edit)                       |
+| unchanged       | deleted remotely | stays deleted (shown informatively)                       |
+| changed         | deleted remotely | **conflict** (my edit vs their delete)                    |
 
 **First run (no baseline):** posts classified via `post_modified_gmt` vs `lastPullAt`;
 options that differ are shown as conflicts (minus the volatile deny-list). After the

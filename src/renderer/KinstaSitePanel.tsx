@@ -55,6 +55,7 @@ export const KinstaDrawerHost: React.FC<Props> = ({ site }) => {
 
   useEffect(() => {
     refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh() only reads site.id; re-run on site change
   }, [site.id]);
 
   // Triggered from the Kinsta page and the More menu
@@ -91,6 +92,7 @@ export const KinstaDrawerHost: React.FC<Props> = ({ site }) => {
     };
     window.addEventListener('kinsta:action', handler);
     return () => window.removeEventListener('kinsta:action', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- subscribe once per site; handler reads the current site.id closure
   }, [site.id]);
 
   const handleLinkComplete = (link: SiteLink) => {

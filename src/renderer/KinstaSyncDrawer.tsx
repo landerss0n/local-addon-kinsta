@@ -15,33 +15,81 @@ const { ipcRenderer } = window.require('electron');
 
 // Kinsta icon - light background (for dark theme)
 const KinstaIconLight = ({ size = 24 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 120 120"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
     <g clipPath="url(#clip0_sync_light)">
-      <path d="M0 24C0 10.7452 10.7452 0 24 0H96C109.254 0 120 10.7452 120 24V96C120 109.254 109.254 120 96 120H24C10.7452 120 0 109.254 0 96V24Z" fill="#F9F5F3"/>
-      <mask id="mask0_sync_light" style={{ maskType: 'luminance' }} maskUnits="userSpaceOnUse" x="4" y="26" width="45" height="68">
-        <path d="M38.3632 26.0246C44.0636 26.0246 48.6843 30.6453 48.6843 36.3456V83.6548C48.6843 89.3551 44.0636 93.9755 38.3632 93.9755C27.2161 93.9755 16.069 93.9755 4.92188 93.9755V26.0252C16.069 26.0237 27.2161 26.0246 38.3632 26.0246Z" fill="white"/>
+      <path
+        d="M0 24C0 10.7452 10.7452 0 24 0H96C109.254 0 120 10.7452 120 24V96C120 109.254 109.254 120 96 120H24C10.7452 120 0 109.254 0 96V24Z"
+        fill="#F9F5F3"
+      />
+      <mask
+        id="mask0_sync_light"
+        style={{ maskType: 'luminance' }}
+        maskUnits="userSpaceOnUse"
+        x="4"
+        y="26"
+        width="45"
+        height="68"
+      >
+        <path
+          d="M38.3632 26.0246C44.0636 26.0246 48.6843 30.6453 48.6843 36.3456V83.6548C48.6843 89.3551 44.0636 93.9755 38.3632 93.9755C27.2161 93.9755 16.069 93.9755 4.92188 93.9755V26.0252C16.069 26.0237 27.2161 26.0246 38.3632 26.0246Z"
+          fill="white"
+        />
       </mask>
       <g mask="url(#mask0_sync_light)">
-        <path d="M30.4688 9.84363H147.721V110.279H30.4688V9.84363Z" fill="url(#paint0_sync_light)"/>
+        <path
+          d="M30.4688 9.84363H147.721V110.279H30.4688V9.84363Z"
+          fill="url(#paint0_sync_light)"
+        />
       </g>
-      <mask id="mask1_sync_light" style={{ maskType: 'luminance' }} maskUnits="userSpaceOnUse" x="48" y="26" width="48" height="68">
-        <path d="M85.3079 26.0252C91.0083 26.0252 95.629 30.646 95.629 36.3463V83.6554C95.629 89.3557 91.0083 93.9762 85.3079 93.9762L48.8301 93.9844L48.8301 26.0156L85.3079 26.0252Z" fill="white"/>
+      <mask
+        id="mask1_sync_light"
+        style={{ maskType: 'luminance' }}
+        maskUnits="userSpaceOnUse"
+        x="48"
+        y="26"
+        width="48"
+        height="68"
+      >
+        <path
+          d="M85.3079 26.0252C91.0083 26.0252 95.629 30.646 95.629 36.3463V83.6554C95.629 89.3557 91.0083 93.9762 85.3079 93.9762L48.8301 93.9844L48.8301 26.0156L85.3079 26.0252Z"
+          fill="white"
+        />
       </mask>
       <g mask="url(#mask1_sync_light)">
-        <path d="M60 9.84375H177.252V110.279H60V9.84375Z" fill="url(#paint1_sync_light)"/>
+        <path d="M60 9.84375H177.252V110.279H60V9.84375Z" fill="url(#paint1_sync_light)" />
       </g>
     </g>
     <defs>
-      <linearGradient id="paint0_sync_light" x1="26.8484" y1="69.0531" x2="106.313" y2="43.7697" gradientUnits="userSpaceOnUse">
-        <stop offset="0.182692" stopColor="#FE5A00"/>
-        <stop offset="0.598914" stopColor="#FF0000"/>
+      <linearGradient
+        id="paint0_sync_light"
+        x1="26.8484"
+        y1="69.0531"
+        x2="106.313"
+        y2="43.7697"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0.182692" stopColor="#FE5A00" />
+        <stop offset="0.598914" stopColor="#FF0000" />
       </linearGradient>
-      <linearGradient id="paint1_sync_light" x1="56.3797" y1="69.0532" x2="135.844" y2="43.7698" gradientUnits="userSpaceOnUse">
-        <stop offset="0.211538" stopColor="#FE5A00"/>
-        <stop offset="0.634615" stopColor="#FF0000"/>
+      <linearGradient
+        id="paint1_sync_light"
+        x1="56.3797"
+        y1="69.0532"
+        x2="135.844"
+        y2="43.7698"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0.211538" stopColor="#FE5A00" />
+        <stop offset="0.634615" stopColor="#FF0000" />
       </linearGradient>
       <clipPath id="clip0_sync_light">
-        <rect width="120" height="120" fill="white"/>
+        <rect width="120" height="120" fill="white" />
       </clipPath>
     </defs>
   </svg>
@@ -49,33 +97,78 @@ const KinstaIconLight = ({ size = 24 }: { size?: number }) => (
 
 // Kinsta icon - dark background (for light theme)
 const KinstaIconDark = ({ size = 24 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 120 120"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
     <g clipPath="url(#clip0_sync_dark)">
-      <path d="M0 24C0 10.7452 10.7452 0 24 0H96C109.254 0 120 10.7452 120 24V96C120 109.254 109.254 120 96 120H24C10.7452 120 0 109.254 0 96V24Z" fill="#181516"/>
-      <mask id="mask0_sync_dark" style={{ maskType: 'luminance' }} maskUnits="userSpaceOnUse" x="4" y="26" width="45" height="68">
-        <path d="M38.3632 26.0246C44.0636 26.0246 48.6843 30.6453 48.6843 36.3456V83.6548C48.6843 89.3551 44.0636 93.9755 38.3632 93.9755C27.2161 93.9755 16.069 93.9755 4.92188 93.9755V26.0252C16.069 26.0237 27.2161 26.0246 38.3632 26.0246Z" fill="white"/>
+      <path
+        d="M0 24C0 10.7452 10.7452 0 24 0H96C109.254 0 120 10.7452 120 24V96C120 109.254 109.254 120 96 120H24C10.7452 120 0 109.254 0 96V24Z"
+        fill="#181516"
+      />
+      <mask
+        id="mask0_sync_dark"
+        style={{ maskType: 'luminance' }}
+        maskUnits="userSpaceOnUse"
+        x="4"
+        y="26"
+        width="45"
+        height="68"
+      >
+        <path
+          d="M38.3632 26.0246C44.0636 26.0246 48.6843 30.6453 48.6843 36.3456V83.6548C48.6843 89.3551 44.0636 93.9755 38.3632 93.9755C27.2161 93.9755 16.069 93.9755 4.92188 93.9755V26.0252C16.069 26.0237 27.2161 26.0246 38.3632 26.0246Z"
+          fill="white"
+        />
       </mask>
       <g mask="url(#mask0_sync_dark)">
-        <path d="M30.4688 9.84363H147.721V110.279H30.4688V9.84363Z" fill="url(#paint0_sync_dark)"/>
+        <path d="M30.4688 9.84363H147.721V110.279H30.4688V9.84363Z" fill="url(#paint0_sync_dark)" />
       </g>
-      <mask id="mask1_sync_dark" style={{ maskType: 'luminance' }} maskUnits="userSpaceOnUse" x="48" y="26" width="48" height="68">
-        <path d="M85.3079 26.0252C91.0083 26.0252 95.629 30.646 95.629 36.3463V83.6554C95.629 89.3557 91.0083 93.9762 85.3079 93.9762L48.8301 93.9844L48.8301 26.0156L85.3079 26.0252Z" fill="white"/>
+      <mask
+        id="mask1_sync_dark"
+        style={{ maskType: 'luminance' }}
+        maskUnits="userSpaceOnUse"
+        x="48"
+        y="26"
+        width="48"
+        height="68"
+      >
+        <path
+          d="M85.3079 26.0252C91.0083 26.0252 95.629 30.646 95.629 36.3463V83.6554C95.629 89.3557 91.0083 93.9762 85.3079 93.9762L48.8301 93.9844L48.8301 26.0156L85.3079 26.0252Z"
+          fill="white"
+        />
       </mask>
       <g mask="url(#mask1_sync_dark)">
-        <path d="M60 9.84375H177.252V110.279H60V9.84375Z" fill="url(#paint1_sync_dark)"/>
+        <path d="M60 9.84375H177.252V110.279H60V9.84375Z" fill="url(#paint1_sync_dark)" />
       </g>
     </g>
     <defs>
-      <linearGradient id="paint0_sync_dark" x1="26.8484" y1="69.0531" x2="106.313" y2="43.7697" gradientUnits="userSpaceOnUse">
-        <stop offset="0.182692" stopColor="#FE5A00"/>
-        <stop offset="0.598914" stopColor="#FF0000"/>
+      <linearGradient
+        id="paint0_sync_dark"
+        x1="26.8484"
+        y1="69.0531"
+        x2="106.313"
+        y2="43.7697"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0.182692" stopColor="#FE5A00" />
+        <stop offset="0.598914" stopColor="#FF0000" />
       </linearGradient>
-      <linearGradient id="paint1_sync_dark" x1="56.3797" y1="69.0532" x2="135.844" y2="43.7698" gradientUnits="userSpaceOnUse">
-        <stop offset="0.211538" stopColor="#FE5A00"/>
-        <stop offset="0.634615" stopColor="#FF0000"/>
+      <linearGradient
+        id="paint1_sync_dark"
+        x1="56.3797"
+        y1="69.0532"
+        x2="135.844"
+        y2="43.7698"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0.211538" stopColor="#FE5A00" />
+        <stop offset="0.634615" stopColor="#FF0000" />
       </linearGradient>
       <clipPath id="clip0_sync_dark">
-        <rect width="120" height="120" fill="white"/>
+        <rect width="120" height="120" fill="white" />
       </clipPath>
     </defs>
   </svg>
@@ -83,10 +176,12 @@ const KinstaIconDark = ({ size = 24 }: { size?: number }) => (
 
 // Theme-aware icon
 const KinstaIcon = ({ size = 24 }: { size?: number }) => {
-  const isDarkMode = typeof document !== 'undefined' &&
+  const isDarkMode =
+    typeof document !== 'undefined' &&
     (document.body.classList.contains('theme-dark') ||
-     getComputedStyle(document.body).backgroundColor.includes('rgb(') &&
-     parseInt(getComputedStyle(document.body).backgroundColor.split(',')[0].replace(/\D/g, '')) < 128);
+      (getComputedStyle(document.body).backgroundColor.includes('rgb(') &&
+        parseInt(getComputedStyle(document.body).backgroundColor.split(',')[0].replace(/\D/g, '')) <
+          128));
   return isDarkMode !== false ? <KinstaIconLight size={size} /> : <KinstaIconDark size={size} />;
 };
 
@@ -151,6 +246,7 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
       loadEnvironments();
       loadLastSynced();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load env/last-synced only when the drawer opens / site link changes
   }, [isOpen, siteLink]);
 
   useEffect(() => {
@@ -194,7 +290,7 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
   };
 
   const getSelectedEnvInfo = (): EnvironmentInfo | null => {
-    const env = environments.find(e => e.id === selectedEnvId);
+    const env = environments.find((e) => e.id === selectedEnvId);
     if (!env || !siteLink) return null;
 
     const siteName = siteLink.kinstaSiteSlug || siteLink.kinstaSiteName;
@@ -207,7 +303,7 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
       sshPort: String(env.ssh_connection?.ssh_port || '22'),
       sshUser,
       remoteDomain: env.primaryDomain?.name || env.domains?.[0]?.name || '',
-      cdnCacheId: env.cdn_cache_id
+      cdnCacheId: env.cdn_cache_id,
     };
   };
 
@@ -236,7 +332,7 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
     const result = await ipcRenderer.invoke(action, site.id, site, envInfo, {
       includeUploads,
       includeDatabase,
-      kinstaBackup
+      kinstaBackup,
     });
 
     if (result.success) {
@@ -261,24 +357,22 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
     }
   };
 
-  const selectedEnv = environments.find(e => e.id === selectedEnvId);
+  const selectedEnv = environments.find((e) => e.id === selectedEnvId);
   const isPush = mode === 'push';
   const isLive = selectedEnv?.is_premium;
 
   // Build radio options
   const envOptions: { [key: string]: any } = {};
-  environments.forEach(env => {
+  environments.forEach((env) => {
     const envLabel = env.is_premium ? 'Production' : 'Staging';
     const domain = env.primaryDomain?.name || env.domains?.[0]?.name || env.display_name;
     envOptions[env.id] = {
       label: (
         <div style={{ textAlign: 'left' }}>
           <div style={{ fontWeight: 600 }}>{envLabel}</div>
-          <div style={{ fontSize: '12px', opacity: 0.7 }}>
-            {domain}
-          </div>
+          <div style={{ fontSize: '12px', opacity: 0.7 }}>{domain}</div>
         </div>
-      )
+      ),
     };
   });
 
@@ -345,9 +439,7 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
               <Title size="s" style={{ margin: 0 }}>
                 {isPush ? 'Push to' : 'Pull from'} Kinsta
               </Title>
-              <span style={{ fontSize: '13px', opacity: 0.7 }}>
-                {siteLink.kinstaSiteName}
-              </span>
+              <span style={{ fontSize: '13px', opacity: 0.7 }}>{siteLink.kinstaSiteName}</span>
             </div>
           </div>
           <button
@@ -361,7 +453,14 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
               opacity: isSyncing ? 0.5 : 1,
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#888"
+              strokeWidth="2"
+            >
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
@@ -373,12 +472,14 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
             <>
               {/* Environment Selection */}
               <div style={{ marginBottom: '24px' }}>
-                <span style={{
-                  display: 'block',
-                  marginBottom: '12px',
-                  fontWeight: 600,
-                  fontSize: '14px',
-                }}>
+                <span
+                  style={{
+                    display: 'block',
+                    marginBottom: '12px',
+                    fontWeight: 600,
+                    fontSize: '14px',
+                  }}
+                >
                   Select environment
                 </span>
 
@@ -398,19 +499,23 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
 
               {/* Options */}
               <div style={{ marginBottom: '24px' }}>
-                <span style={{
-                  display: 'block',
-                  marginBottom: '12px',
-                  fontWeight: 600,
-                  fontSize: '14px',
-                }}>
+                <span
+                  style={{
+                    display: 'block',
+                    marginBottom: '12px',
+                    fontWeight: 600,
+                    fontSize: '14px',
+                  }}
+                >
                   Options
                 </span>
-                <div style={{
-                  backgroundColor: '#1e1e1e',
-                  borderRadius: '8px',
-                  padding: '16px',
-                }}>
+                <div
+                  style={{
+                    backgroundColor: '#1e1e1e',
+                    borderRadius: '8px',
+                    padding: '16px',
+                  }}
+                >
                   {/* local-components Checkbox calls onChange with the new
                       boolean, NOT a DOM event (unlike InputSearch) */}
                   <Checkbox
@@ -438,26 +543,38 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
               </div>
 
               {/* Info box */}
-              <div style={{
-                backgroundColor: isPush ? 'rgba(252, 196, 25, 0.1)' : 'rgba(80, 192, 131, 0.1)',
-                border: `1px solid ${isPush ? 'rgba(252, 196, 25, 0.3)' : 'rgba(80, 192, 131, 0.3)'}`,
-                borderRadius: '8px',
-                padding: '16px',
-              }}>
+              <div
+                style={{
+                  backgroundColor: isPush ? 'rgba(252, 196, 25, 0.1)' : 'rgba(80, 192, 131, 0.1)',
+                  border: `1px solid ${isPush ? 'rgba(252, 196, 25, 0.3)' : 'rgba(80, 192, 131, 0.3)'}`,
+                  borderRadius: '8px',
+                  padding: '16px',
+                }}
+              >
                 <div style={{ display: 'flex', gap: '12px' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isPush ? '#fcc419' : '#50c083'} strokeWidth="2">
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={isPush ? '#fcc419' : '#50c083'}
+                    strokeWidth="2"
+                  >
                     <circle cx="12" cy="12" r="10" />
                     <path d="M12 16v-4M12 8h.01" />
                   </svg>
                   <div style={{ fontSize: '13px', opacity: 0.9 }}>
                     {isPush ? (
                       <>
-                        Your local files will be uploaded to <strong>{selectedEnv?.is_premium ? 'Production' : 'Staging'}</strong>.
-                        {includeDatabase && ' The remote database will be replaced with your local database.'}
+                        Your local files will be uploaded to{' '}
+                        <strong>{selectedEnv?.is_premium ? 'Production' : 'Staging'}</strong>.
+                        {includeDatabase &&
+                          ' The remote database will be replaced with your local database.'}
                       </>
                     ) : (
                       <>
-                        Remote files will be downloaded from <strong>{selectedEnv?.is_premium ? 'Production' : 'Staging'}</strong>.
+                        Remote files will be downloaded from{' '}
+                        <strong>{selectedEnv?.is_premium ? 'Production' : 'Staging'}</strong>.
                         {includeDatabase && ' Your local database will be replaced.'}
                       </>
                     )}
@@ -466,29 +583,33 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
               </div>
 
               {lastSyncedAt && (
-                <div style={{
-                  marginTop: '12px',
-                  fontSize: '12px',
-                  opacity: 0.6,
-                }}>
+                <div
+                  style={{
+                    marginTop: '12px',
+                    fontSize: '12px',
+                    opacity: 0.6,
+                  }}
+                >
                   Last {isPush ? 'pushed' : 'pulled'}: {new Date(lastSyncedAt).toLocaleString()}
                 </div>
               )}
 
               {error && (
-                <div style={{
-                  marginTop: '16px',
-                  padding: '12px 16px',
-                  backgroundColor: 'rgba(208, 77, 92, 0.1)',
-                  border: '1px solid rgba(208, 77, 92, 0.3)',
-                  borderRadius: '8px',
-                  color: '#d04d5c',
-                  fontSize: '13px',
-                  whiteSpace: 'pre-wrap',
-                  fontFamily: 'monospace',
-                  maxHeight: '160px',
-                  overflowY: 'auto',
-                }}>
+                <div
+                  style={{
+                    marginTop: '16px',
+                    padding: '12px 16px',
+                    backgroundColor: 'rgba(208, 77, 92, 0.1)',
+                    border: '1px solid rgba(208, 77, 92, 0.3)',
+                    borderRadius: '8px',
+                    color: '#d04d5c',
+                    fontSize: '13px',
+                    whiteSpace: 'pre-wrap',
+                    fontFamily: 'monospace',
+                    maxHeight: '160px',
+                    overflowY: 'auto',
+                  }}
+                >
                   {error}
                 </div>
               )}
@@ -497,24 +618,28 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
 
           {/* Syncing State */}
           {isSyncing && (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              textAlign: 'center',
-            }}>
-              <div style={{
-                width: '80px',
-                height: '80px',
-                borderRadius: '50%',
-                backgroundColor: 'rgba(80, 192, 131, 0.15)',
+            <div
+              style={{
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: '24px',
-              }}>
+                height: '100%',
+                textAlign: 'center',
+              }}
+            >
+              <div
+                style={{
+                  width: '80px',
+                  height: '80px',
+                  borderRadius: '50%',
+                  backgroundColor: 'rgba(80, 192, 131, 0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: '24px',
+                }}
+              >
                 <Spinner />
               </div>
               <Title size="m" style={{ marginBottom: '8px' }}>
@@ -536,25 +661,38 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
 
           {/* Complete State */}
           {isComplete && (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              textAlign: 'center',
-            }}>
-              <div style={{
-                width: '80px',
-                height: '80px',
-                borderRadius: '50%',
-                backgroundColor: 'rgba(80, 192, 131, 0.15)',
+            <div
+              style={{
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: '24px',
-              }}>
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#50c083" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                height: '100%',
+                textAlign: 'center',
+              }}
+            >
+              <div
+                style={{
+                  width: '80px',
+                  height: '80px',
+                  borderRadius: '50%',
+                  backgroundColor: 'rgba(80, 192, 131, 0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: '24px',
+                }}
+              >
+                <svg
+                  width="40"
+                  height="40"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#50c083"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               </div>
@@ -564,9 +702,7 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
               <span style={{ opacity: 0.7, marginBottom: '24px', display: 'block' }}>
                 Your site has been synced successfully.
               </span>
-              <TextButton onClick={handleClose}>
-                Close
-              </TextButton>
+              <TextButton onClick={handleClose}>Close</TextButton>
             </div>
           )}
         </div>
@@ -575,15 +711,24 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
         {!isSyncing && !isComplete && (
           <div style={footerStyle}>
             {isPush && isLive && (
-              <div style={{
-                marginBottom: '12px',
-                color: '#fcc419',
-                fontSize: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <div
+                style={{
+                  marginBottom: '12px',
+                  color: '#fcc419',
+                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
                   <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                   <line x1="12" y1="9" x2="12" y2="13" />
                   <line x1="12" y1="17" x2="12.01" y2="17" />
@@ -596,7 +741,8 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
               disabled={!selectedEnvId || environments.length === 0}
               style={{ width: '100%' }}
             >
-              {isPush ? 'Push to ' : 'Pull from '}{isLive ? 'Production' : 'Staging'}
+              {isPush ? 'Push to ' : 'Pull from '}
+              {isLive ? 'Production' : 'Staging'}
             </PrimaryButton>
           </div>
         )}
@@ -609,17 +755,26 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
         contentLabel="Confirm Push"
       >
         <div style={{ padding: '30px', maxWidth: '400px', textAlign: 'center' }}>
-          <div style={{
-            width: '64px',
-            height: '64px',
-            borderRadius: '50%',
-            backgroundColor: isLive ? 'rgba(208, 77, 92, 0.15)' : 'rgba(252, 196, 25, 0.15)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 20px',
-          }}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={isLive ? '#d04d5c' : '#fcc419'} strokeWidth="2">
+          <div
+            style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              backgroundColor: isLive ? 'rgba(208, 77, 92, 0.15)' : 'rgba(252, 196, 25, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 20px',
+            }}
+          >
+            <svg
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={isLive ? '#d04d5c' : '#fcc419'}
+              strokeWidth="2"
+            >
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
               <line x1="12" y1="9" x2="12" y2="13" />
               <line x1="12" y1="17" x2="12.01" y2="17" />
@@ -630,36 +785,43 @@ const KinstaSyncDrawer: React.FC<Props> = ({ isOpen, onClose, mode, site, siteLi
             Push to {isLive ? 'Production' : 'Staging'}?
           </Title>
 
-          <p style={{
-            color: '#888',
-            fontSize: '14px',
-            marginBottom: '24px',
-            lineHeight: 1.5,
-          }}>
+          <p
+            style={{
+              color: '#888',
+              fontSize: '14px',
+              marginBottom: '24px',
+              lineHeight: 1.5,
+            }}
+          >
             {isLive ? (
               <>
-                This will overwrite your <strong style={{ color: '#d04d5c' }}>production site</strong>.
-                {includeDatabase && ' The production database will be replaced with your local database.'}
-                {' '}This action cannot be undone.
+                This will overwrite your{' '}
+                <strong style={{ color: '#d04d5c' }}>production site</strong>.
+                {includeDatabase &&
+                  ' The production database will be replaced with your local database.'}{' '}
+                This action cannot be undone.
               </>
             ) : (
               <>
                 This will overwrite your staging site.
-                {includeDatabase && ' The staging database will be replaced with your local database.'}
+                {includeDatabase &&
+                  ' The staging database will be replaced with your local database.'}
               </>
             )}
           </p>
 
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-            <TextButton onClick={() => setShowConfirmModal(false)}>
-              Cancel
-            </TextButton>
+            <TextButton onClick={() => setShowConfirmModal(false)}>Cancel</TextButton>
             <PrimaryButton
               onClick={executeSync}
-              style={isLive ? {
-                backgroundColor: '#d04d5c',
-                borderColor: '#d04d5c'
-              } : undefined}
+              style={
+                isLive
+                  ? {
+                      backgroundColor: '#d04d5c',
+                      borderColor: '#d04d5c',
+                    }
+                  : undefined
+              }
             >
               Yes, Push to {isLive ? 'Production' : 'Staging'}
             </PrimaryButton>

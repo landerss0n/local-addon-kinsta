@@ -31,6 +31,7 @@
 ### Task 1: Volatile filters + domain normalization (`dbMerge.ts`)
 
 **Files:**
+
 - Create: `src/main/dbMerge.ts`
 - Create: `src/main/dbMerge.test.ts`
 
@@ -44,13 +45,25 @@ import { isVolatileOption, isVolatileMetaKey, normalizeDomain } from './dbMerge'
 describe('isVolatileOption', () => {
   it('excludes transients, cron, rewrite_rules and URL options', () => {
     for (const name of [
-      '_transient_foo', '_transient_timeout_foo', '_site_transient_update_core',
-      'cron', 'rewrite_rules', 'recently_edited', 'auto_updater.lock',
-      'siteurl', 'home',
-    ]) expect(isVolatileOption(name), name).toBe(true);
+      '_transient_foo',
+      '_transient_timeout_foo',
+      '_site_transient_update_core',
+      'cron',
+      'rewrite_rules',
+      'recently_edited',
+      'auto_updater.lock',
+      'siteurl',
+      'home',
+    ])
+      expect(isVolatileOption(name), name).toBe(true);
   });
   it('keeps real options', () => {
-    for (const name of ['blogname', 'bricks_global_settings', 'sidebars_widgets', 'cron_jobs_custom'])
+    for (const name of [
+      'blogname',
+      'bricks_global_settings',
+      'sidebars_widgets',
+      'cron_jobs_custom',
+    ])
       expect(isVolatileOption(name), name).toBe(false);
   });
 });
@@ -66,12 +79,14 @@ describe('isVolatileMetaKey', () => {
 describe('normalizeDomain', () => {
   it('replaces https, http and protocol-relative URLs with a placeholder', () => {
     const text = 'a https://my.local/x b http://my.local/y c //my.local/z d';
-    expect(normalizeDomain(text, 'my.local'))
-      .toBe('a __KSYNC_URL__/x b __KSYNC_URL__/y c __KSYNC_URL__/z d');
+    expect(normalizeDomain(text, 'my.local')).toBe(
+      'a __KSYNC_URL__/x b __KSYNC_URL__/y c __KSYNC_URL__/z d',
+    );
   });
   it('does not touch other domains or escape regex chars unsafely', () => {
-    expect(normalizeDomain('https://example.com //my.local.evil.com', 'my.local'))
-      .toBe('https://example.com //my.local.evil.com');
+    expect(normalizeDomain('https://example.com //my.local.evil.com', 'my.local')).toBe(
+      'https://example.com //my.local.evil.com',
+    );
   });
 });
 ```
@@ -91,14 +106,18 @@ Expected: FAIL — `Cannot find module './dbMerge'` (or named exports missing).
 // Options that legitimately differ between environments or churn constantly.
 // `siteurl`/`home` are handled by search-replace and must never be merged.
 const VOLATILE_OPTION_EXACT = new Set([
-  'cron', 'rewrite_rules', 'recently_edited', 'auto_updater.lock',
-  'siteurl', 'home',
+  'cron',
+  'rewrite_rules',
+  'recently_edited',
+  'auto_updater.lock',
+  'siteurl',
+  'home',
 ]);
 const VOLATILE_OPTION_PREFIXES = ['_transient_', '_site_transient_'];
 
 export function isVolatileOption(name: string): boolean {
   if (VOLATILE_OPTION_EXACT.has(name)) return true;
-  return VOLATILE_OPTION_PREFIXES.some(p => name.startsWith(p));
+  return VOLATILE_OPTION_PREFIXES.some((p) => name.startsWith(p));
 }
 
 export function isVolatileMetaKey(key: string): boolean {
@@ -139,6 +158,7 @@ git commit -m "Add volatile filters and domain normalization for DB merge"
 ### Task 2: Snapshot types + three-way classifier
 
 **Files:**
+
 - Modify: `src/main/dbMerge.ts`
 - Modify: `src/main/dbMerge.test.ts`
 
@@ -152,21 +172,21 @@ export type UnitKind = 'post' | 'option' | 'term';
 export interface UnitSnapshot {
   hash: string;
   // Display fields (posts/terms only)
-  title?: string;     // post_title or term name
-  type?: string;      // post_type or taxonomy
-  status?: string;    // post_status
-  modified?: string;  // post_modified_gmt 'YYYY-MM-DD HH:MM:SS'
+  title?: string; // post_title or term name
+  type?: string; // post_type or taxonomy
+  status?: string; // post_status
+  modified?: string; // post_modified_gmt 'YYYY-MM-DD HH:MM:SS'
 }
 
 // What the snapshot PHP returns from each side (and what baselines store)
 export interface DbSnapshot {
-  prefix: string;                            // $wpdb->prefix
-  posts: Record<string, UnitSnapshot>;       // key: post ID as string
-  options: Record<string, string>;           // key: option_name, value: hash
-  terms: Record<string, UnitSnapshot>;       // key: term_id as string
+  prefix: string; // $wpdb->prefix
+  posts: Record<string, UnitSnapshot>; // key: post ID as string
+  options: Record<string, string>; // key: option_name, value: hash
+  terms: Record<string, UnitSnapshot>; // key: term_id as string
   maxPostId: number;
   maxTermId: number;
-  maxTtId: number;                           // max term_taxonomy_id
+  maxTtId: number; // max term_taxonomy_id
 }
 
 export interface Baseline {
@@ -183,13 +203,13 @@ export type ConflictKind = 'edit-edit' | 'edit-delete' | 'delete-edit' | 'id-col
 
 export interface DbDiffRow {
   kind: UnitKind;
-  id: string;               // post ID / option_name / term ID
-  label: string;            // post title / option name / term name
-  subtype: string;          // post_type / 'option' / taxonomy
+  id: string; // post ID / option_name / term ID
+  label: string; // post title / option name / term name
+  subtype: string; // post_type / 'option' / taxonomy
   change: DbChange;
   conflictKind?: ConflictKind;
-  localModified?: string;   // posts only
-  remoteModified?: string;  // posts only
+  localModified?: string; // posts only
+  remoteModified?: string; // posts only
 }
 ```
 
@@ -201,44 +221,76 @@ Append to `src/main/dbMerge.test.ts`:
 import { classifySnapshots, DbSnapshot, Baseline } from './dbMerge';
 
 const snap = (over: Partial<DbSnapshot>): DbSnapshot => ({
-  prefix: 'wp_', posts: {}, options: {}, terms: {},
-  maxPostId: 0, maxTermId: 0, maxTtId: 0, ...over,
+  prefix: 'wp_',
+  posts: {},
+  options: {},
+  terms: {},
+  maxPostId: 0,
+  maxTermId: 0,
+  maxTtId: 0,
+  ...over,
 });
 const base = (over: Partial<Baseline>): Baseline => ({
-  version: 1, createdAt: '2026-01-01T00:00:00Z', envId: 'e1',
-  posts: {}, options: {}, terms: {}, ...over,
+  version: 1,
+  createdAt: '2026-01-01T00:00:00Z',
+  envId: 'e1',
+  posts: {},
+  options: {},
+  terms: {},
+  ...over,
 });
-const post = (hash: string, modified = '2026-01-01 00:00:00') =>
-  ({ hash, title: 'T', type: 'page', status: 'publish', modified });
+const post = (hash: string, modified = '2026-01-01 00:00:00') => ({
+  hash,
+  title: 'T',
+  type: 'page',
+  status: 'publish',
+  modified,
+});
 
 describe('classifySnapshots (with baseline)', () => {
   it('classifies the full matrix for posts', () => {
-    const baseline = base({ posts: {
-      '1': post('a'), '2': post('a'), '3': post('a'), '4': post('a'),
-      '5': post('a'), '6': post('a'), '7': post('a'),
-    }});
-    const local = snap({ posts: {
-      '1': post('b'),            // changed locally only        → push
-      '2': post('a'),            // unchanged / changed remotely → keep
-      '3': post('b'),            // changed both, differently    → conflict edit-edit
-      '4': post('b'),            // changed both, identically    → (skip)
-      /* 5 deleted locally, unchanged remotely                  → delete-remote */
-      /* 6 deleted locally, changed remotely                    → conflict delete-edit */
-      '7': post('b'),            // changed locally, deleted remotely → conflict edit-delete
-      '10': post('n'),           // new locally                  → push
-      '11': post('x'),           // new BOTH sides, different    → conflict id-collision
-      '12': post('s'),           // new both sides, same hash    → (skip)
-    }});
-    const remote = snap({ posts: {
-      '1': post('a'), '2': post('c'), '3': post('c'), '4': post('b'),
-      '5': post('a'), '6': post('c'),
-      /* 7 deleted remotely */
-      '11': post('y'), '12': post('s'),
-      '20': post('r'),           // new remotely                 → keep
-    }});
+    const baseline = base({
+      posts: {
+        '1': post('a'),
+        '2': post('a'),
+        '3': post('a'),
+        '4': post('a'),
+        '5': post('a'),
+        '6': post('a'),
+        '7': post('a'),
+      },
+    });
+    const local = snap({
+      posts: {
+        '1': post('b'), // changed locally only        → push
+        '2': post('a'), // unchanged / changed remotely → keep
+        '3': post('b'), // changed both, differently    → conflict edit-edit
+        '4': post('b'), // changed both, identically    → (skip)
+        /* 5 deleted locally, unchanged remotely                  → delete-remote */
+        /* 6 deleted locally, changed remotely                    → conflict delete-edit */
+        '7': post('b'), // changed locally, deleted remotely → conflict edit-delete
+        '10': post('n'), // new locally                  → push
+        '11': post('x'), // new BOTH sides, different    → conflict id-collision
+        '12': post('s'), // new both sides, same hash    → (skip)
+      },
+    });
+    const remote = snap({
+      posts: {
+        '1': post('a'),
+        '2': post('c'),
+        '3': post('c'),
+        '4': post('b'),
+        '5': post('a'),
+        '6': post('c'),
+        /* 7 deleted remotely */
+        '11': post('y'),
+        '12': post('s'),
+        '20': post('r'), // new remotely                 → keep
+      },
+    });
 
     const rows = classifySnapshots(local, remote, baseline);
-    const byId = Object.fromEntries(rows.filter(r => r.kind === 'post').map(r => [r.id, r]));
+    const byId = Object.fromEntries(rows.filter((r) => r.kind === 'post').map((r) => [r.id, r]));
 
     expect(byId['1'].change).toBe('push');
     expect(byId['2'].change).toBe('keep');
@@ -263,27 +315,31 @@ describe('classifySnapshots (with baseline)', () => {
     const baseline = base({ options: { blogname: 'a', cron: 'x' } });
     const local = snap({ options: { blogname: 'b', cron: 'y', new_opt: 'n' } });
     const remote = snap({ options: { blogname: 'a', cron: 'z' } });
-    const rows = classifySnapshots(local, remote, baseline).filter(r => r.kind === 'option');
+    const rows = classifySnapshots(local, remote, baseline).filter((r) => r.kind === 'option');
     expect(rows).toHaveLength(2); // blogname push + new_opt push; cron is volatile
-    expect(rows.find(r => r.id === 'blogname')!.change).toBe('push');
-    expect(rows.find(r => r.id === 'new_opt')!.change).toBe('push');
+    expect(rows.find((r) => r.id === 'blogname')!.change).toBe('push');
+    expect(rows.find((r) => r.id === 'new_opt')!.change).toBe('push');
   });
 });
 
 describe('classifySnapshots (first run, no baseline)', () => {
   it('uses post_modified vs lastSyncAt for posts', () => {
-    const local = snap({ posts: {
-      '1': post('b', '2026-06-01 10:00:00'),   // modified after sync, remote not → push
-      '2': post('a', '2026-01-01 00:00:00'),   // remote modified after sync      → keep
-      '3': post('b', '2026-06-01 10:00:00'),   // both modified after sync        → conflict
-    }});
-    const remote = snap({ posts: {
-      '1': post('a', '2026-01-01 00:00:00'),
-      '2': post('c', '2026-06-01 10:00:00'),
-      '3': post('c', '2026-06-02 10:00:00'),
-    }});
+    const local = snap({
+      posts: {
+        '1': post('b', '2026-06-01 10:00:00'), // modified after sync, remote not → push
+        '2': post('a', '2026-01-01 00:00:00'), // remote modified after sync      → keep
+        '3': post('b', '2026-06-01 10:00:00'), // both modified after sync        → conflict
+      },
+    });
+    const remote = snap({
+      posts: {
+        '1': post('a', '2026-01-01 00:00:00'),
+        '2': post('c', '2026-06-01 10:00:00'),
+        '3': post('c', '2026-06-02 10:00:00'),
+      },
+    });
     const rows = classifySnapshots(local, remote, null, '2026-05-01T00:00:00Z');
-    const byId = Object.fromEntries(rows.map(r => [r.id, r]));
+    const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
     expect(byId['1'].change).toBe('push');
     expect(byId['2'].change).toBe('keep');
     expect(byId['3'].change).toBe('conflict');
@@ -293,7 +349,8 @@ describe('classifySnapshots (first run, no baseline)', () => {
     const rows = classifySnapshots(
       snap({ options: { blogname: 'a' } }),
       snap({ options: { blogname: 'b' } }),
-      null, '2026-05-01T00:00:00Z'
+      null,
+      '2026-05-01T00:00:00Z',
     );
     expect(rows[0]).toMatchObject({ kind: 'option', id: 'blogname', change: 'conflict' });
   });
@@ -322,19 +379,24 @@ function stateOf(current: string | undefined, baseline: string | undefined): Sta
 
 // Map (local state × remote state) → row change, or null to skip the unit.
 function classifyPair(
-  l: State, r: State, localHash?: string, remoteHash?: string
+  l: State,
+  r: State,
+  localHash?: string,
+  remoteHash?: string,
 ): { change: DbChange; conflictKind?: ConflictKind } | null {
   if (localHash !== undefined && localHash === remoteHash) return null; // identical → in sync
   if (l === 'new' && r === 'new') return { change: 'conflict', conflictKind: 'id-collision' };
   if (l === 'new') return { change: 'push' };
   if (r === 'new') return { change: 'keep' };
   if (l === 'deleted' && r === 'deleted') return null;
-  if (l === 'deleted') return r === 'unchanged'
-    ? { change: 'delete-remote' }
-    : { change: 'conflict', conflictKind: 'delete-edit' };
-  if (r === 'deleted') return l === 'unchanged'
-    ? { change: 'keep-deleted' }
-    : { change: 'conflict', conflictKind: 'edit-delete' };
+  if (l === 'deleted')
+    return r === 'unchanged'
+      ? { change: 'delete-remote' }
+      : { change: 'conflict', conflictKind: 'delete-edit' };
+  if (r === 'deleted')
+    return l === 'unchanged'
+      ? { change: 'keep-deleted' }
+      : { change: 'conflict', conflictKind: 'edit-delete' };
   if (l === 'changed' && r === 'changed') return { change: 'conflict', conflictKind: 'edit-edit' };
   if (l === 'changed') return { change: 'push' };
   if (r === 'changed') return { change: 'keep' };
@@ -343,12 +405,14 @@ function classifyPair(
 
 // First-run fallback: WP timestamps for posts, conflict for differing options/terms.
 function classifyPairFirstRun(
-  kind: UnitKind, localUnit: UnitSnapshot | undefined, remoteUnit: UnitSnapshot | undefined,
-  lastSyncAt: string | undefined
+  kind: UnitKind,
+  localUnit: UnitSnapshot | undefined,
+  remoteUnit: UnitSnapshot | undefined,
+  lastSyncAt: string | undefined,
 ): { change: DbChange; conflictKind?: ConflictKind } | null {
   if (localUnit && remoteUnit && localUnit.hash === remoteUnit.hash) return null;
-  if (localUnit && !remoteUnit) return { change: 'push' };   // assume new locally
-  if (!localUnit && remoteUnit) return { change: 'keep' };   // assume new remotely
+  if (localUnit && !remoteUnit) return { change: 'push' }; // assume new locally
+  if (!localUnit && remoteUnit) return { change: 'keep' }; // assume new remotely
   if (!localUnit || !remoteUnit) return null;
   if (kind === 'post' && lastSyncAt) {
     const syncMs = new Date(lastSyncAt).getTime();
@@ -365,7 +429,10 @@ function classifyPairFirstRun(
 }
 
 export function classifySnapshots(
-  local: DbSnapshot, remote: DbSnapshot, baseline: Baseline | null, lastSyncAt?: string
+  local: DbSnapshot,
+  remote: DbSnapshot,
+  baseline: Baseline | null,
+  lastSyncAt?: string,
 ): DbDiffRow[] {
   const rows: DbDiffRow[] = [];
 
@@ -378,14 +445,17 @@ export function classifySnapshots(
     const rMap = kind === 'post' ? remote.posts : remote.terms;
     const bMap = baseline ? (kind === 'post' ? baseline.posts : baseline.terms) : {};
     for (const id of allKeys(lMap, rMap, bMap)) {
-      const lu = lMap[id], ru = rMap[id], bu = (bMap as Record<string, UnitSnapshot>)[id];
+      const lu = lMap[id],
+        ru = rMap[id],
+        bu = (bMap as Record<string, UnitSnapshot>)[id];
       const res = baseline
         ? classifyPair(stateOf(lu?.hash, bu?.hash), stateOf(ru?.hash, bu?.hash), lu?.hash, ru?.hash)
         : classifyPairFirstRun(kind, lu, ru, lastSyncAt);
       if (!res) continue;
       const display = lu || ru || bu;
       rows.push({
-        kind, id,
+        kind,
+        id,
         label: display?.title || `#${id}`,
         subtype: display?.type || kind,
         ...res,
@@ -398,12 +468,17 @@ export function classifySnapshots(
   const bOpts = baseline ? baseline.options : {};
   for (const name of allKeys(local.options, remote.options, bOpts)) {
     if (isVolatileOption(name)) continue;
-    const lh = local.options[name], rh = remote.options[name], bh = bOpts[name];
+    const lh = local.options[name],
+      rh = remote.options[name],
+      bh = bOpts[name];
     const res = baseline
       ? classifyPair(stateOf(lh, bh), stateOf(rh, bh), lh, rh)
-      : classifyPairFirstRun('option',
+      : classifyPairFirstRun(
+          'option',
           lh !== undefined ? { hash: lh } : undefined,
-          rh !== undefined ? { hash: rh } : undefined, lastSyncAt);
+          rh !== undefined ? { hash: rh } : undefined,
+          lastSyncAt,
+        );
     if (!res) continue;
     rows.push({ kind: 'option', id: name, label: name, subtype: 'option', ...res });
   }
@@ -429,6 +504,7 @@ git commit -m "Add three-way snapshot classifier for DB merge"
 ### Task 3: SQL escaping + statement builders
 
 **Files:**
+
 - Modify: `src/main/dbMerge.ts`
 - Modify: `src/main/dbMerge.test.ts`
 
@@ -438,7 +514,11 @@ Append to `src/main/dbMerge.test.ts`:
 
 ```ts
 import {
-  sqlEscape, sqlValue, buildReplaceSql, buildDeleteSql, buildOptionUpsertSql,
+  sqlEscape,
+  sqlValue,
+  buildReplaceSql,
+  buildDeleteSql,
+  buildOptionUpsertSql,
   buildAutoIncrementSql,
 } from './dbMerge';
 
@@ -461,22 +541,30 @@ describe('statement builders', () => {
       { ID: 5, post_title: "It's", post_parent: 0, post_content: null },
     ]);
     expect(sql).toBe(
-      "REPLACE INTO `wp_posts` (`ID`, `post_title`, `post_parent`, `post_content`) " +
-      "VALUES (5, 'It\\'s', 0, NULL);"
+      'REPLACE INTO `wp_posts` (`ID`, `post_title`, `post_parent`, `post_content`) ' +
+        "VALUES (5, 'It\\'s', 0, NULL);",
     );
   });
   it('builds DELETE with a numeric or string key', () => {
-    expect(buildDeleteSql('wp_postmeta', 'post_id', 5)).toBe('DELETE FROM `wp_postmeta` WHERE `post_id` = 5;');
-    expect(buildDeleteSql('wp_options', 'option_name', "a'b"))
-      .toBe("DELETE FROM `wp_options` WHERE `option_name` = 'a\\'b';");
+    expect(buildDeleteSql('wp_postmeta', 'post_id', 5)).toBe(
+      'DELETE FROM `wp_postmeta` WHERE `post_id` = 5;',
+    );
+    expect(buildDeleteSql('wp_options', 'option_name', "a'b")).toBe(
+      "DELETE FROM `wp_options` WHERE `option_name` = 'a\\'b';",
+    );
   });
   it('builds option upsert', () => {
-    expect(buildOptionUpsertSql('wp_options', { option_name: 'blogname', option_value: 'Hi', autoload: 'yes' }))
-      .toBe(
-        "INSERT INTO `wp_options` (`option_name`, `option_value`, `autoload`) " +
+    expect(
+      buildOptionUpsertSql('wp_options', {
+        option_name: 'blogname',
+        option_value: 'Hi',
+        autoload: 'yes',
+      }),
+    ).toBe(
+      'INSERT INTO `wp_options` (`option_name`, `option_value`, `autoload`) ' +
         "VALUES ('blogname', 'Hi', 'yes') " +
-        "ON DUPLICATE KEY UPDATE `option_value` = 'Hi', `autoload` = 'yes';"
-      );
+        "ON DUPLICATE KEY UPDATE `option_value` = 'Hi', `autoload` = 'yes';",
+    );
   });
   it('rejects table/column names that are not [A-Za-z0-9_]', () => {
     expect(() => buildDeleteSql('wp_posts; DROP', 'ID', 1)).toThrow();
@@ -508,10 +596,21 @@ Append to `src/main/dbMerge.ts`:
 // to [A-Za-z0-9_] and backtick-quoted — content can never break out.
 
 export function sqlEscape(s: string): string {
-  return s.replace(/[\0\x08\x09\x1a\n\r"'\\]/g, (ch) => ({
-    '\0': '\\0', '\x08': '\\b', '\x09': '\\t', '\x1a': '\\Z',
-    '\n': '\\n', '\r': '\\r', '"': '\\"', "'": "\\'", '\\': '\\\\',
-  }[ch] as string));
+  return s.replace(
+    /[\0\x08\x09\x1a\n\r"'\\]/g,
+    (ch) =>
+      ({
+        '\0': '\\0',
+        '\x08': '\\b',
+        '\x09': '\\t',
+        '\x1a': '\\Z',
+        '\n': '\\n',
+        '\r': '\\r',
+        '"': '\\"',
+        "'": "\\'",
+        '\\': '\\\\',
+      })[ch] as string,
+  );
 }
 
 export function sqlValue(v: unknown): string {
@@ -531,9 +630,7 @@ export function buildReplaceSql(table: string, rows: SqlRow[]): string {
   if (!rows.length) return '';
   const cols = Object.keys(rows[0]);
   const colList = cols.map(ident).join(', ');
-  const values = rows
-    .map(r => `(${cols.map(c => sqlValue(r[c])).join(', ')})`)
-    .join(',\n');
+  const values = rows.map((r) => `(${cols.map((c) => sqlValue(r[c])).join(', ')})`).join(',\n');
   return `REPLACE INTO ${ident(table)} (${colList}) VALUES ${values};`;
 }
 
@@ -544,9 +641,11 @@ export function buildDeleteSql(table: string, keyCol: string, keyVal: string | n
 export function buildOptionUpsertSql(table: string, row: SqlRow): string {
   const cols = Object.keys(row);
   const colList = cols.map(ident).join(', ');
-  const vals = cols.map(c => sqlValue(row[c])).join(', ');
-  const updates = cols.filter(c => c !== 'option_name')
-    .map(c => `${ident(c)} = ${sqlValue(row[c])}`).join(', ');
+  const vals = cols.map((c) => sqlValue(row[c])).join(', ');
+  const updates = cols
+    .filter((c) => c !== 'option_name')
+    .map((c) => `${ident(c)} = ${sqlValue(row[c])}`)
+    .join(', ');
   return `INSERT INTO ${ident(table)} (${colList}) VALUES (${vals}) ON DUPLICATE KEY UPDATE ${updates};`;
 }
 
@@ -555,7 +654,8 @@ export function buildOptionUpsertSql(table: string, row: SqlRow): string {
 export const AUTO_INCREMENT_MARGIN = 100000;
 
 export function buildAutoIncrementSql(
-  prefix: string, max: { maxPostId: number; maxTermId: number; maxTtId: number }
+  prefix: string,
+  max: { maxPostId: number; maxTermId: number; maxTtId: number },
 ): string[] {
   if (!/^[A-Za-z0-9_]+$/.test(prefix)) throw new Error(`Unsafe table prefix: ${prefix}`);
   return [
@@ -583,6 +683,7 @@ git commit -m "Add SQL escaping and statement builders for DB merge"
 ### Task 4: Merge-script assembly from fetched units
 
 **Files:**
+
 - Modify: `src/main/dbMerge.ts`
 - Modify: `src/main/dbMerge.test.ts`
 
@@ -600,30 +701,49 @@ import { buildMergeScript, FetchedUnits } from './dbMerge';
 describe('buildMergeScript', () => {
   const units: FetchedUnits = {
     prefix: 'wp_',
-    posts: [{
-      post: { ID: 7, post_title: 'Hello', post_status: 'publish' },
-      meta: [{ post_id: 7, meta_key: '_k', meta_value: 'v' }],
-      termRelationships: [{ object_id: 7, term_taxonomy_id: 3, term_order: 0 }],
-    }],
+    posts: [
+      {
+        post: { ID: 7, post_title: 'Hello', post_status: 'publish' },
+        meta: [{ post_id: 7, meta_key: '_k', meta_value: 'v' }],
+        termRelationships: [{ object_id: 7, term_taxonomy_id: 3, term_order: 0 }],
+      },
+    ],
     options: [{ option_name: 'blogname', option_value: 'Hi', autoload: 'yes' }],
-    terms: [{
-      term: { term_id: 3, name: 'News', slug: 'news', term_group: 0 },
-      taxonomy: [{ term_taxonomy_id: 3, term_id: 3, taxonomy: 'category', description: '', parent: 0, count: 1 }],
-    }],
+    terms: [
+      {
+        term: { term_id: 3, name: 'News', slug: 'news', term_group: 0 },
+        taxonomy: [
+          {
+            term_taxonomy_id: 3,
+            term_id: 3,
+            taxonomy: 'category',
+            description: '',
+            parent: 0,
+            count: 1,
+          },
+        ],
+      },
+    ],
   };
 
   it('emits SET NAMES, replaces and meta rebuild in order', () => {
     const sql = buildMergeScript({
       units,
-      deletePosts: ['99'], deleteOptions: ["stale'opt"], deleteTerms: [],
+      deletePosts: ['99'],
+      deleteOptions: ["stale'opt"],
+      deleteTerms: [],
       deletedTermTtIds: [],
     });
     expect(sql).toContain('SET NAMES utf8mb4;');
     // term before post (posts may reference term_taxonomy rows)
     expect(sql.indexOf('`wp_terms`')).toBeLessThan(sql.indexOf('`wp_posts`'));
-    expect(sql).toContain("REPLACE INTO `wp_posts` (`ID`, `post_title`, `post_status`) VALUES (7, 'Hello', 'publish');");
+    expect(sql).toContain(
+      "REPLACE INTO `wp_posts` (`ID`, `post_title`, `post_status`) VALUES (7, 'Hello', 'publish');",
+    );
     expect(sql).toContain('DELETE FROM `wp_postmeta` WHERE `post_id` = 7;');
-    expect(sql).toContain("REPLACE INTO `wp_postmeta` (`post_id`, `meta_key`, `meta_value`) VALUES (7, '_k', 'v');");
+    expect(sql).toContain(
+      "REPLACE INTO `wp_postmeta` (`post_id`, `meta_key`, `meta_value`) VALUES (7, '_k', 'v');",
+    );
     expect(sql).toContain('DELETE FROM `wp_term_relationships` WHERE `object_id` = 7;');
     expect(sql).toContain('ON DUPLICATE KEY UPDATE `option_value`');
     // deletions
@@ -636,7 +756,9 @@ describe('buildMergeScript', () => {
   it('deletes terms with their taxonomy and relationship rows', () => {
     const sql = buildMergeScript({
       units: { prefix: 'wp_', posts: [], options: [], terms: [] },
-      deletePosts: [], deleteOptions: [], deleteTerms: ['3'],
+      deletePosts: [],
+      deleteOptions: [],
+      deleteTerms: ['3'],
       deletedTermTtIds: [33],
     });
     expect(sql).toContain('DELETE FROM `wp_terms` WHERE `term_id` = 3;');
@@ -645,10 +767,15 @@ describe('buildMergeScript', () => {
   });
 
   it('rejects non-numeric post/term ids', () => {
-    expect(() => buildMergeScript({
-      units: { prefix: 'wp_', posts: [], options: [], terms: [] },
-      deletePosts: ['7; DROP TABLE x'], deleteOptions: [], deleteTerms: [], deletedTermTtIds: [],
-    })).toThrow();
+    expect(() =>
+      buildMergeScript({
+        units: { prefix: 'wp_', posts: [], options: [], terms: [] },
+        deletePosts: ['7; DROP TABLE x'],
+        deleteOptions: [],
+        deleteTerms: [],
+        deletedTermTtIds: [],
+      }),
+    ).toThrow();
   });
 });
 ```
@@ -666,18 +793,18 @@ Append to `src/main/dbMerge.ts`:
 // --- Merge script assembly ----------------------------------------------------
 
 export interface FetchedPostUnit {
-  post: SqlRow;                 // full wp_posts row (ID included)
-  meta: SqlRow[];               // wp_postmeta rows (volatile keys already excluded by PHP)
-  termRelationships: SqlRow[];  // wp_term_relationships rows for this object
+  post: SqlRow; // full wp_posts row (ID included)
+  meta: SqlRow[]; // wp_postmeta rows (volatile keys already excluded by PHP)
+  termRelationships: SqlRow[]; // wp_term_relationships rows for this object
 }
 export interface FetchedTermUnit {
-  term: SqlRow;                 // wp_terms row
-  taxonomy: SqlRow[];           // wp_term_taxonomy rows for this term
+  term: SqlRow; // wp_terms row
+  taxonomy: SqlRow[]; // wp_term_taxonomy rows for this term
 }
 export interface FetchedUnits {
   prefix: string;
   posts: FetchedPostUnit[];
-  options: SqlRow[];            // full wp_options rows minus option_id
+  options: SqlRow[]; // full wp_options rows minus option_id
   terms: FetchedTermUnit[];
 }
 
@@ -691,7 +818,7 @@ export function buildMergeScript(args: {
   deletePosts: string[];
   deleteOptions: string[];
   deleteTerms: string[];
-  deletedTermTtIds: number[];   // term_taxonomy_ids of deleted terms (from snapshot fetch)
+  deletedTermTtIds: number[]; // term_taxonomy_ids of deleted terms (from snapshot fetch)
 }): string {
   const p = args.units.prefix;
   if (!/^[A-Za-z0-9_]+$/.test(p)) throw new Error(`Unsafe table prefix: ${p}`);
@@ -708,7 +835,8 @@ export function buildMergeScript(args: {
     out.push(buildDeleteSql(`${p}postmeta`, 'post_id', id));
     if (u.meta.length) out.push(buildReplaceSql(`${p}postmeta`, u.meta));
     out.push(buildDeleteSql(`${p}term_relationships`, 'object_id', id));
-    if (u.termRelationships.length) out.push(buildReplaceSql(`${p}term_relationships`, u.termRelationships));
+    if (u.termRelationships.length)
+      out.push(buildReplaceSql(`${p}term_relationships`, u.termRelationships));
   }
   for (const o of args.units.options) {
     out.push(buildOptionUpsertSql(`${p}options`, o));
@@ -752,6 +880,7 @@ git commit -m "Add merge SQL script assembly"
 ### Task 5: Baseline IO + PHP snippets
 
 **Files:**
+
 - Modify: `src/main/dbMerge.ts` (baseline IO)
 - Create: `src/main/dbMergePhp.ts` (PHP source strings)
 - Modify: `src/main/dbMerge.test.ts`
@@ -820,7 +949,12 @@ export function snapshotToBaseline(snapshot: DbSnapshot, envId: string): Baselin
   };
 }
 
-export function saveBaseline(dir: string, localSiteId: string, envId: string, baseline: Baseline): void {
+export function saveBaseline(
+  dir: string,
+  localSiteId: string,
+  envId: string,
+  baseline: Baseline,
+): void {
   nodeFs.mkdirSync(dir, { recursive: true });
   nodeFs.writeFileSync(baselineFilePath(dir, localSiteId, envId), JSON.stringify(baseline));
 }
@@ -829,7 +963,7 @@ export function loadBaseline(dir: string, localSiteId: string, envId: string): B
   try {
     const raw = nodeFs.readFileSync(baselineFilePath(dir, localSiteId, envId), 'utf8');
     const parsed = JSON.parse(raw);
-    return parsed?.version === 1 ? parsed as Baseline : null;
+    return parsed?.version === 1 ? (parsed as Baseline) : null;
   } catch {
     return null;
   }
@@ -983,6 +1117,7 @@ git commit -m "Add baseline storage and WP-CLI PHP snippets for DB merge"
 ### Task 6: Extract reusable WP-CLI runners in `index.ts`
 
 **Files:**
+
 - Modify: `src/main/index.ts` (extract from the pull handler at :1133-1184; add helpers near `searchReplacePairs` at :569)
 
 No new unit tests (integration glue) — `npm test` and `npm run build` must stay green,
@@ -997,21 +1132,29 @@ currently inlined in the pull handler:
 // Run fn with wp-config.php temporarily pointing DB_HOST at the site socket
 // (WP-CLI can't reach Local's MySQL otherwise). Always restores, with crash
 // recovery via the .kinsta-sync-bak copy.
-async function withSocketWpConfig<T>(localPublicPath: string, socketPath: string, fn: () => Promise<T>): Promise<T> {
+async function withSocketWpConfig<T>(
+  localPublicPath: string,
+  socketPath: string,
+  fn: () => Promise<T>,
+): Promise<T> {
   const wpConfigPath = path.join(localPublicPath, 'wp-config.php');
   const wpConfigBackupPath = wpConfigPath + '.kinsta-sync-bak';
 
-  if (fs.existsSync(wpConfigBackupPath)) {           // previous crash — restore first
+  if (fs.existsSync(wpConfigBackupPath)) {
+    // previous crash — restore first
     fs.copyFileSync(wpConfigBackupPath, wpConfigPath);
     fs.unlinkSync(wpConfigBackupPath);
   }
   const wpConfigBackup = fs.readFileSync(wpConfigPath, 'utf8');
   fs.writeFileSync(wpConfigBackupPath, wpConfigBackup);
   try {
-    fs.writeFileSync(wpConfigPath, wpConfigBackup.replace(
-      /define\s*\(\s*['"]DB_HOST['"]\s*,\s*['"]([^'"]*)['"]\s*\)/,
-      `define('DB_HOST', 'localhost:${socketPath}')`
-    ));
+    fs.writeFileSync(
+      wpConfigPath,
+      wpConfigBackup.replace(
+        /define\s*\(\s*['"]DB_HOST['"]\s*,\s*['"]([^'"]*)['"]\s*\)/,
+        `define('DB_HOST', 'localhost:${socketPath}')`,
+      ),
+    );
     return await fn();
   } finally {
     fs.writeFileSync(wpConfigPath, wpConfigBackup);
@@ -1019,42 +1162,71 @@ async function withSocketWpConfig<T>(localPublicPath: string, socketPath: string
   }
 }
 
-interface LocalWpCli { phpBin: string; wpCliPhar: string; env: NodeJS.ProcessEnv }
+interface LocalWpCli {
+  phpBin: string;
+  wpCliPhar: string;
+  env: NodeJS.ProcessEnv;
+}
 
 function resolveLocalWpCli(): LocalWpCli {
   const phpBin = findServiceBinary(['php-'], 'php');
   const wpCliPhar = findWpCliPhar();
   const mysqlBin = findServiceBinary(['mysql-', 'mariadb-'], 'mysql');
-  if (!phpBin) throw new Error('Could not find PHP binary in Local\'s lightning-services');
+  if (!phpBin) throw new Error("Could not find PHP binary in Local's lightning-services");
   if (!wpCliPhar) throw new Error('Could not find WP-CLI in the Local installation');
-  if (!mysqlBin) throw new Error('Could not find MySQL binaries in Local\'s lightning-services');
-  return { phpBin, wpCliPhar, env: { ...process.env, PATH: `${path.dirname(mysqlBin)}:${process.env.PATH || ''}` } };
+  if (!mysqlBin) throw new Error("Could not find MySQL binaries in Local's lightning-services");
+  return {
+    phpBin,
+    wpCliPhar,
+    env: { ...process.env, PATH: `${path.dirname(mysqlBin)}:${process.env.PATH || ''}` },
+  };
 }
 
 // Run one local WP-CLI command (callers wrap in withSocketWpConfig themselves
 // when the command touches the DB — i.e. always, in practice).
 async function runLocalWpCli(
-  sync: ActiveSync, cli: LocalWpCli, localPublicPath: string, wpArgs: string[],
-  opts: RunOptions = {}
+  sync: ActiveSync,
+  cli: LocalWpCli,
+  localPublicPath: string,
+  wpArgs: string[],
+  opts: RunOptions = {},
 ): Promise<{ code: number; stderr: string }> {
-  return runCommand(sync, cli.phpBin, [
-    cli.wpCliPhar, ...wpArgs,
-    '--skip-plugins', '--skip-themes', `--path=${localPublicPath}`, '--allow-root',
-  ], { env: cli.env, ...opts });
+  return runCommand(
+    sync,
+    cli.phpBin,
+    [
+      cli.wpCliPhar,
+      ...wpArgs,
+      '--skip-plugins',
+      '--skip-themes',
+      `--path=${localPublicPath}`,
+      '--allow-root',
+    ],
+    { env: cli.env, ...opts },
+  );
 }
 
 // The three search-replace passes against the LOCAL database
 async function runLocalSearchReplace(
-  sync: ActiveSync, cli: LocalWpCli, localPublicPath: string,
-  fromDomain: string, toDomain: string, networkArgs: string[],
-  onPass?: (i: number, from: string, to: string) => void
+  sync: ActiveSync,
+  cli: LocalWpCli,
+  localPublicPath: string,
+  fromDomain: string,
+  toDomain: string,
+  networkArgs: string[],
+  onPass?: (i: number, from: string, to: string) => void,
 ): Promise<void> {
   const pairs = searchReplacePairs(fromDomain, toDomain);
   for (let i = 0; i < pairs.length; i++) {
     const [from, to] = pairs[i];
     onPass?.(i, from, to);
     await runLocalWpCli(sync, cli, localPublicPath, [
-      'search-replace', from, to, '--all-tables', '--skip-columns=guid', ...networkArgs,
+      'search-replace',
+      from,
+      to,
+      '--all-tables',
+      '--skip-columns=guid',
+      ...networkArgs,
     ]);
   }
 }
@@ -1066,14 +1238,26 @@ In the pull handler, replace the block from `const phpBin = findServiceBinary...
 (index.ts:1133) through the end of the inner `try/finally` (index.ts:1184) with:
 
 ```ts
-        const cli = resolveLocalWpCli();
-        // MultiSite.No is the empty string, so truthiness is the correct check
-        const networkArgs = site.multiSite ? ['--network'] : [];
-        await withSocketWpConfig(localPublicPath, socketPath, () =>
-          runLocalSearchReplace(sync, cli, localPublicPath, remoteDomain, localDomain, networkArgs,
-            (i, from, to) => sendProgress({ stage: 'search-replace', progress: 84 + i * 4, message: `Replacing ${from} → ${to}` }))
-        );
-        sendProgress({ stage: 'search-replace', progress: 96, message: 'Search-replace complete!' });
+const cli = resolveLocalWpCli();
+// MultiSite.No is the empty string, so truthiness is the correct check
+const networkArgs = site.multiSite ? ['--network'] : [];
+await withSocketWpConfig(localPublicPath, socketPath, () =>
+  runLocalSearchReplace(
+    sync,
+    cli,
+    localPublicPath,
+    remoteDomain,
+    localDomain,
+    networkArgs,
+    (i, from, to) =>
+      sendProgress({
+        stage: 'search-replace',
+        progress: 84 + i * 4,
+        message: `Replacing ${from} → ${to}`,
+      }),
+  ),
+);
+sendProgress({ stage: 'search-replace', progress: 96, message: 'Search-replace complete!' });
 ```
 
 (The push handler has a remote search-replace loop — leave it; it runs over SSH, not locally.)
@@ -1095,6 +1279,7 @@ git commit -m "Extract reusable local WP-CLI runners from the pull handler"
 ### Task 7: Snapshot runners + `kinsta:dbPreview` IPC handler
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 - [ ] **Step 1: Add imports and the snapshot runners**
@@ -1103,8 +1288,16 @@ At the top of `index.ts` add:
 
 ```ts
 import {
-  DbSnapshot, Baseline, classifySnapshots, buildMergeScript, buildAutoIncrementSql,
-  baselineFilePath, loadBaseline, saveBaseline, snapshotToBaseline, FetchedUnits,
+  DbSnapshot,
+  Baseline,
+  classifySnapshots,
+  buildMergeScript,
+  buildAutoIncrementSql,
+  baselineFilePath,
+  loadBaseline,
+  saveBaseline,
+  snapshotToBaseline,
+  FetchedUnits,
 } from './dbMerge';
 import { SNAPSHOT_PHP, FETCH_UNITS_PHP, parseKsyncJson } from './dbMergePhp';
 ```
@@ -1122,25 +1315,35 @@ Add the runners after `runLocalSearchReplace` (from Task 6):
 
 // Both sides run the SAME PHP via `wp eval-file -` so hashes are comparable.
 async function runLocalEvalFile<T>(
-  sync: ActiveSync, cli: LocalWpCli, localPublicPath: string, socketPath: string,
-  phpSource: string, phpArgs: string[]
+  sync: ActiveSync,
+  cli: LocalWpCli,
+  localPublicPath: string,
+  socketPath: string,
+  phpSource: string,
+  phpArgs: string[],
 ): Promise<T> {
   const tmpPhp = path.join(TEMP_DIR, `ksync-eval-${Date.now()}.php`);
   fs.writeFileSync(tmpPhp, phpSource);
   try {
     const chunks: string[] = [];
     await withSocketWpConfig(localPublicPath, socketPath, () =>
-      runLocalWpCli(sync, cli, localPublicPath, ['eval-file', tmpPhp, ...phpArgs],
-        { onStdout: (c) => chunks.push(c) })
+      runLocalWpCli(sync, cli, localPublicPath, ['eval-file', tmpPhp, ...phpArgs], {
+        onStdout: (c) => chunks.push(c),
+      }),
     );
     return parseKsyncJson<T>(chunks.join(''));
   } finally {
-    try { fs.unlinkSync(tmpPhp); } catch (e) {}
+    try {
+      fs.unlinkSync(tmpPhp);
+    } catch (e) {}
   }
 }
 
 async function runRemoteEvalFile<T>(
-  sync: ActiveSync, envInfo: EnvironmentInfo, phpSource: string, phpArgs: string[]
+  sync: ActiveSync,
+  envInfo: EnvironmentInfo,
+  phpSource: string,
+  phpArgs: string[],
 ): Promise<T> {
   const tmpPhp = path.join(TEMP_DIR, `ksync-eval-remote-${Date.now()}.php`);
   fs.writeFileSync(tmpPhp, phpSource);
@@ -1148,13 +1351,18 @@ async function runRemoteEvalFile<T>(
     const chunks: string[] = [];
     // args are validated upstream: domain via validateEnvironmentInfo, the fetch
     // request is base64 ([A-Za-z0-9+/=]) — safe inside the remote command string
-    const argStr = phpArgs.map(a => `'${a}'`).join(' ');
-    await runCommand(sync, 'ssh', sshArgs(envInfo,
-      `cd ~/public && wp eval-file - ${argStr} --skip-plugins --skip-themes`),
-      { stdinFile: tmpPhp, onStdout: (c) => chunks.push(c) });
+    const argStr = phpArgs.map((a) => `'${a}'`).join(' ');
+    await runCommand(
+      sync,
+      'ssh',
+      sshArgs(envInfo, `cd ~/public && wp eval-file - ${argStr} --skip-plugins --skip-themes`),
+      { stdinFile: tmpPhp, onStdout: (c) => chunks.push(c) },
+    );
     return parseKsyncJson<T>(chunks.join(''));
   } finally {
-    try { fs.unlinkSync(tmpPhp); } catch (e) {}
+    try {
+      fs.unlinkSync(tmpPhp);
+    } catch (e) {}
   }
 }
 
@@ -1169,9 +1377,14 @@ Insert after the `kinsta:pushPreview` handler (index.ts:1007). It reuses the
 `activePreviews` map so a re-fired preview kills its predecessor:
 
 ```ts
-  // Database merge preview: snapshot both sides, three-way diff vs baseline
-  ipcMain.handle('kinsta:dbPreview', async (
-    _event: IpcMainInvokeEvent, localSiteId: string, site: SiteInfo, envInfo: EnvironmentInfo
+// Database merge preview: snapshot both sides, three-way diff vs baseline
+ipcMain.handle(
+  'kinsta:dbPreview',
+  async (
+    _event: IpcMainInvokeEvent,
+    localSiteId: string,
+    site: SiteInfo,
+    envInfo: EnvironmentInfo,
   ) => {
     if (activeSyncs.has(localSiteId)) {
       return { success: false, error: 'A sync is already running for this site' };
@@ -1181,10 +1394,17 @@ Insert after the `kinsta:pushPreview` handler (index.ts:1007). It reuses the
     }
     const socketPath = getMysqlSocketPath(localSiteId);
     if (!fs.existsSync(socketPath)) {
-      return { success: false, error: 'The local site must be running for database preview. Start the site in Local and try again.' };
+      return {
+        success: false,
+        error:
+          'The local site must be running for database preview. Start the site in Local and try again.',
+      };
     }
     if (site.multiSite) {
-      return { success: false, error: 'Database merge is not available for multisite — use "Overwrite everything".' };
+      return {
+        success: false,
+        error: 'Database merge is not available for multisite — use "Overwrite everything".',
+      };
     }
 
     activePreviews.get(`db:${localSiteId}`)?.child?.kill('SIGTERM');
@@ -1196,9 +1416,16 @@ Insert after the `kinsta:pushPreview` handler (index.ts:1007). It reuses the
       const cli = resolveLocalWpCli();
 
       const localSnap = await runLocalEvalFile<DbSnapshot>(
-        preview, cli, localPublicPath, socketPath, SNAPSHOT_PHP, [site.domain]);
-      const remoteSnap = await runRemoteEvalFile<DbSnapshot>(
-        preview, envInfo, SNAPSHOT_PHP, [stripDomain(envInfo.remoteDomain)]);
+        preview,
+        cli,
+        localPublicPath,
+        socketPath,
+        SNAPSHOT_PHP,
+        [site.domain],
+      );
+      const remoteSnap = await runRemoteEvalFile<DbSnapshot>(preview, envInfo, SNAPSHOT_PHP, [
+        stripDomain(envInfo.remoteDomain),
+      ]);
 
       const baseline = loadBaseline(BASELINES_DIR, localSiteId, envInfo.envId);
       const link = loadSiteLinks()[localSiteId];
@@ -1206,17 +1433,23 @@ Insert after the `kinsta:pushPreview` handler (index.ts:1007). It reuses the
 
       const rows = classifySnapshots(localSnap, remoteSnap, baseline, lastSyncAt);
       return {
-        success: true, rows, firstRun: !baseline,
+        success: true,
+        rows,
+        firstRun: !baseline,
         // term_taxonomy_ids needed when the user confirms term deletions
-        remotePrefix: remoteSnap.prefix, localPrefix: localSnap.prefix,
+        remotePrefix: remoteSnap.prefix,
+        localPrefix: localSnap.prefix,
       };
     } catch (error: any) {
-      if (error instanceof CancelledError) return { success: false, cancelled: true, error: 'Cancelled' };
+      if (error instanceof CancelledError)
+        return { success: false, cancelled: true, error: 'Cancelled' };
       return { success: false, error: error.message };
     } finally {
-      if (activePreviews.get(`db:${localSiteId}`) === preview) activePreviews.delete(`db:${localSiteId}`);
+      if (activePreviews.get(`db:${localSiteId}`) === preview)
+        activePreviews.delete(`db:${localSiteId}`);
     }
-  });
+  },
+);
 ```
 
 - [ ] **Step 3: Build + test**
@@ -1236,6 +1469,7 @@ git commit -m "Add kinsta:dbPreview IPC handler with two-sided snapshots"
 ### Task 8: Merge branch in the push pipeline
 
 **Files:**
+
 - Modify: `src/main/index.ts` (the `kinsta:push` handler, index.ts:1232+, and `SyncOptions`, index.ts:129)
 
 - [ ] **Step 1: Extend `SyncOptions`**
@@ -1244,17 +1478,25 @@ git commit -m "Add kinsta:dbPreview IPC handler with two-sided snapshots"
 // Renderer-computed selections for a database MERGE push. IDs are validated
 // in buildMergeScript (numeric for posts/terms); option names are SQL-escaped.
 export interface DbMergeSelections {
-  pushPosts: string[]; pushOptions: string[]; pushTerms: string[];
-  deletePostsRemote: string[]; deleteOptionsRemote: string[]; deleteTermsRemote: string[];
+  pushPosts: string[];
+  pushOptions: string[];
+  pushTerms: string[];
+  deletePostsRemote: string[];
+  deleteOptionsRemote: string[];
+  deleteTermsRemote: string[];
   // Convergence (local gets "their" version):
-  pullPosts: string[]; pullOptions: string[]; pullTerms: string[];
-  deletePostsLocal: string[]; deleteOptionsLocal: string[]; deleteTermsLocal: string[];
+  pullPosts: string[];
+  pullOptions: string[];
+  pullTerms: string[];
+  deletePostsLocal: string[];
+  deleteOptionsLocal: string[];
+  deleteTermsLocal: string[];
   converge: boolean;
 }
 
 interface SyncOptions {
   // ...existing fields unchanged...
-  dbMode?: 'overwrite' | 'merge';      // default 'overwrite' (today's behavior)
+  dbMode?: 'overwrite' | 'merge'; // default 'overwrite' (today's behavior)
   dbSelections?: DbMergeSelections;
 }
 ```
@@ -1269,7 +1511,9 @@ Insert before the `kinsta:push` handler:
 // Caller has already taken the remote pre-push backup; we take the local one.
 async function applyDbMerge(args: {
   sync: ActiveSync;
-  site: SiteInfo; localSiteId: string; envInfo: EnvironmentInfo;
+  site: SiteInfo;
+  localSiteId: string;
+  envInfo: EnvironmentInfo;
   sel: DbMergeSelections;
   sendProgress: (p: SyncProgress) => void;
   flags: { remoteImportStarted: boolean; localImportStarted: boolean };
@@ -1280,90 +1524,163 @@ async function applyDbMerge(args: {
   const cli = resolveLocalWpCli();
   const db = getDbCredentials(site);
   const mysqlBin = findServiceBinary(['mysql-', 'mariadb-'], 'mysql');
-  if (!mysqlBin) throw new Error('Could not find MySQL binaries in Local\'s lightning-services');
+  if (!mysqlBin) throw new Error("Could not find MySQL binaries in Local's lightning-services");
   const remoteDomain = stripDomain(envInfo.remoteDomain);
 
   // 1. Fetch the full LOCAL rows for everything we push
   sendProgress({ stage: 'database', progress: 40, message: 'Reading local changes...' });
-  const pushReq = Buffer.from(JSON.stringify({
-    posts: sel.pushPosts, options: sel.pushOptions, terms: sel.pushTerms,
-  })).toString('base64');
+  const pushReq = Buffer.from(
+    JSON.stringify({
+      posts: sel.pushPosts,
+      options: sel.pushOptions,
+      terms: sel.pushTerms,
+    }),
+  ).toString('base64');
   const pushUnits = await runLocalEvalFile<FetchedUnits>(
-    sync, cli, localPublicPath, socketPath, FETCH_UNITS_PHP, [pushReq]);
+    sync,
+    cli,
+    localPublicPath,
+    socketPath,
+    FETCH_UNITS_PHP,
+    [pushReq],
+  );
 
   // Deleted terms' tt_ids come from the local taxonomy rows of those terms —
   // fetch them too so remote term_relationships are cleaned up.
-  const delTermReq = Buffer.from(JSON.stringify({
-    posts: [], options: [], terms: sel.deleteTermsRemote,
-  })).toString('base64');
+  const delTermReq = Buffer.from(
+    JSON.stringify({
+      posts: [],
+      options: [],
+      terms: sel.deleteTermsRemote,
+    }),
+  ).toString('base64');
   const delTermUnits = sel.deleteTermsRemote.length
     ? await runRemoteEvalFile<FetchedUnits>(sync, envInfo, FETCH_UNITS_PHP, [delTermReq])
     : { prefix: pushUnits.prefix, posts: [], options: [], terms: [] };
-  const deletedTermTtIds = delTermUnits.terms.flatMap(t => t.taxonomy.map(x => Number(x.term_taxonomy_id)));
+  const deletedTermTtIds = delTermUnits.terms.flatMap((t) =>
+    t.taxonomy.map((x) => Number(x.term_taxonomy_id)),
+  );
 
   // 2. Build + upload + import the remote merge script (uses the REMOTE prefix)
   sendProgress({ stage: 'database', progress: 50, message: 'Applying changes on Kinsta...' });
   const remoteSql = buildMergeScript({
     units: { ...pushUnits },
-    deletePosts: sel.deletePostsRemote, deleteOptions: sel.deleteOptionsRemote,
-    deleteTerms: sel.deleteTermsRemote, deletedTermTtIds,
+    deletePosts: sel.deletePostsRemote,
+    deleteOptions: sel.deleteOptionsRemote,
+    deleteTerms: sel.deleteTermsRemote,
+    deletedTermTtIds,
   });
   const localSqlPath = path.join(TEMP_DIR, `${localSiteId}-merge-push.sql`);
   const remoteSqlPath = '~/kinsta-sync-merge.sql';
   fs.writeFileSync(localSqlPath, remoteSql);
   await runCommand(sync, 'scp', [
-    '-P', envInfo.sshPort, '-o', 'StrictHostKeyChecking=accept-new',
-    localSqlPath, `${envInfo.sshUser}@${envInfo.sshHost}:${remoteSqlPath}`,
+    '-P',
+    envInfo.sshPort,
+    '-o',
+    'StrictHostKeyChecking=accept-new',
+    localSqlPath,
+    `${envInfo.sshUser}@${envInfo.sshHost}:${remoteSqlPath}`,
   ]);
   flags.remoteImportStarted = true;
-  await runCommand(sync, 'ssh', sshArgs(envInfo, `cd ~/public && wp db import ${remoteSqlPath} && rm -f ${remoteSqlPath}`));
+  await runCommand(
+    sync,
+    'ssh',
+    sshArgs(envInfo, `cd ~/public && wp db import ${remoteSqlPath} && rm -f ${remoteSqlPath}`),
+  );
 
   // 3. Remote search-replace: the local domain only exists in rows we just
   //    inserted, so the full pass is effectively row-scoped.
   const pairs = searchReplacePairs(site.domain, remoteDomain);
   for (let i = 0; i < pairs.length; i++) {
     const [from, to] = pairs[i];
-    sendProgress({ stage: 'search-replace', progress: 60 + i * 3, message: `Replacing ${from} → ${to} on Kinsta` });
-    await runCommand(sync, 'ssh', sshArgs(envInfo,
-      `cd ~/public && wp search-replace '${from}' '${to}' --all-tables --skip-columns=guid`));
+    sendProgress({
+      stage: 'search-replace',
+      progress: 60 + i * 3,
+      message: `Replacing ${from} → ${to} on Kinsta`,
+    });
+    await runCommand(
+      sync,
+      'ssh',
+      sshArgs(
+        envInfo,
+        `cd ~/public && wp search-replace '${from}' '${to}' --all-tables --skip-columns=guid`,
+      ),
+    );
   }
 
   // 4. Convergence: local DB gets "their" rows
   if (sel.converge) {
-    sendProgress({ stage: 'database', progress: 72, message: 'Updating local database with their changes...' });
-    const pullReq = Buffer.from(JSON.stringify({
-      posts: sel.pullPosts, options: sel.pullOptions, terms: sel.pullTerms,
-    })).toString('base64');
-    const pullUnits = await runRemoteEvalFile<FetchedUnits>(sync, envInfo, FETCH_UNITS_PHP, [pullReq]);
+    sendProgress({
+      stage: 'database',
+      progress: 72,
+      message: 'Updating local database with their changes...',
+    });
+    const pullReq = Buffer.from(
+      JSON.stringify({
+        posts: sel.pullPosts,
+        options: sel.pullOptions,
+        terms: sel.pullTerms,
+      }),
+    ).toString('base64');
+    const pullUnits = await runRemoteEvalFile<FetchedUnits>(sync, envInfo, FETCH_UNITS_PHP, [
+      pullReq,
+    ]);
     const localDelTermUnits = sel.deleteTermsLocal.length
-      ? await runLocalEvalFile<FetchedUnits>(sync, cli, localPublicPath, socketPath, FETCH_UNITS_PHP,
-          [Buffer.from(JSON.stringify({ posts: [], options: [], terms: sel.deleteTermsLocal })).toString('base64')])
+      ? await runLocalEvalFile<FetchedUnits>(
+          sync,
+          cli,
+          localPublicPath,
+          socketPath,
+          FETCH_UNITS_PHP,
+          [
+            Buffer.from(
+              JSON.stringify({ posts: [], options: [], terms: sel.deleteTermsLocal }),
+            ).toString('base64'),
+          ],
+        )
       : { prefix: pullUnits.prefix, posts: [], options: [], terms: [] };
     const localSql = buildMergeScript({
       units: pullUnits,
-      deletePosts: sel.deletePostsLocal, deleteOptions: sel.deleteOptionsLocal,
+      deletePosts: sel.deletePostsLocal,
+      deleteOptions: sel.deleteOptionsLocal,
       deleteTerms: sel.deleteTermsLocal,
-      deletedTermTtIds: localDelTermUnits.terms.flatMap(t => t.taxonomy.map(x => Number(x.term_taxonomy_id))),
+      deletedTermTtIds: localDelTermUnits.terms.flatMap((t) =>
+        t.taxonomy.map((x) => Number(x.term_taxonomy_id)),
+      ),
     });
     const convergeSqlPath = path.join(TEMP_DIR, `${localSiteId}-merge-converge.sql`);
     fs.writeFileSync(convergeSqlPath, localSql);
     flags.localImportStarted = true;
-    await runCommand(sync, mysqlBin, [
-      `-u${db.user}`, `-p${db.password}`, `--socket=${socketPath}`, db.database,
-    ], { stdinFile: convergeSqlPath });
+    await runCommand(
+      sync,
+      mysqlBin,
+      [`-u${db.user}`, `-p${db.password}`, `--socket=${socketPath}`, db.database],
+      { stdinFile: convergeSqlPath },
+    );
     // Their rows carry the remote domain — rewrite to local in the local DB
     await withSocketWpConfig(localPublicPath, socketPath, () =>
-      runLocalSearchReplace(sync, cli, localPublicPath, remoteDomain, site.domain, []));
-    try { fs.unlinkSync(convergeSqlPath); } catch (e) {}
+      runLocalSearchReplace(sync, cli, localPublicPath, remoteDomain, site.domain, []),
+    );
+    try {
+      fs.unlinkSync(convergeSqlPath);
+    } catch (e) {}
   }
 
   // 5. Rebuild the baseline from the merged REMOTE state (the merged truth
   //    whether or not convergence ran)
   sendProgress({ stage: 'database', progress: 85, message: 'Saving sync baseline...' });
-  const newRemoteSnap = await runRemoteEvalFile<DbSnapshot>(
-    sync, envInfo, SNAPSHOT_PHP, [remoteDomain]);
-  saveBaseline(BASELINES_DIR, localSiteId, envInfo.envId, snapshotToBaseline(newRemoteSnap, envInfo.envId));
-  try { fs.unlinkSync(localSqlPath); } catch (e) {}
+  const newRemoteSnap = await runRemoteEvalFile<DbSnapshot>(sync, envInfo, SNAPSHOT_PHP, [
+    remoteDomain,
+  ]);
+  saveBaseline(
+    BASELINES_DIR,
+    localSiteId,
+    envInfo.envId,
+    snapshotToBaseline(newRemoteSnap, envInfo.envId),
+  );
+  try {
+    fs.unlinkSync(localSqlPath);
+  } catch (e) {}
 }
 ```
 
@@ -1373,34 +1690,43 @@ In `kinsta:push`, the database section currently does export-local → scp → r
 import → remote search-replace. Wrap it:
 
 ```ts
-      if (options.includeDatabase) {
-        // ...existing pre-flight + remote pre-push backup stays UNCHANGED...
+if (options.includeDatabase) {
+  // ...existing pre-flight + remote pre-push backup stays UNCHANGED...
 
-        if (options.dbMode === 'merge' && options.dbSelections) {
-          // Local backup first: convergence writes to the local DB
-          sendProgress({ stage: 'database', progress: 36, message: 'Backing up local database...' });
-          const localBackupPath = path.join(TEMP_DIR, `${localSiteId}-pre-merge-backup.sql`);
-          const mysqldumpBin = findServiceBinary(['mysql-', 'mariadb-'], 'mysqldump');
-          if (!mysqldumpBin) throw new Error('Could not find MySQL binaries in Local\'s lightning-services');
-          await runCommand(sync, mysqldumpBin, [
-            `-u${db.user}`, `-p${db.password}`, `--socket=${socketPath}`, db.database,
-          ], { stdoutFile: localBackupPath });
+  if (options.dbMode === 'merge' && options.dbSelections) {
+    // Local backup first: convergence writes to the local DB
+    sendProgress({ stage: 'database', progress: 36, message: 'Backing up local database...' });
+    const localBackupPath = path.join(TEMP_DIR, `${localSiteId}-pre-merge-backup.sql`);
+    const mysqldumpBin = findServiceBinary(['mysql-', 'mariadb-'], 'mysqldump');
+    if (!mysqldumpBin)
+      throw new Error("Could not find MySQL binaries in Local's lightning-services");
+    await runCommand(
+      sync,
+      mysqldumpBin,
+      [`-u${db.user}`, `-p${db.password}`, `--socket=${socketPath}`, db.database],
+      { stdoutFile: localBackupPath },
+    );
 
-          await applyDbMerge({
-            sync, site, localSiteId, envInfo,
-            sel: options.dbSelections, sendProgress, flags: mergeFlags,
-          });
-        } else {
-          // ...existing overwrite path stays byte-for-byte UNCHANGED...
-        }
-      }
+    await applyDbMerge({
+      sync,
+      site,
+      localSiteId,
+      envInfo,
+      sel: options.dbSelections,
+      sendProgress,
+      flags: mergeFlags,
+    });
+  } else {
+    // ...existing overwrite path stays byte-for-byte UNCHANGED...
+  }
+}
 ```
 
 Declare near the existing `remoteImportStarted` flag (the push handler already
 tracks one — merge reuses the same catch-block contract):
 
 ```ts
-    const mergeFlags = { remoteImportStarted: false, localImportStarted: false };
+const mergeFlags = { remoteImportStarted: false, localImportStarted: false };
 ```
 
 In the push handler's **catch block**, extend the existing remote-restore logic:
@@ -1413,23 +1739,39 @@ save a baseline from a LOCAL snapshot (sides are identical then). In the pull
 handler after search-replace completes:
 
 ```ts
-        // Baseline + ID-collision prevention (merge-push feature)
-        try {
-          sendProgress({ stage: 'database', progress: 97, message: 'Saving sync baseline...' });
-          const cliB = resolveLocalWpCli();
-          const localSnapB = await runLocalEvalFile<DbSnapshot>(
-            sync, cliB, localPublicPath, socketPath, SNAPSHOT_PHP, [site.domain]);
-          saveBaseline(BASELINES_DIR, localSiteId, envInfo.envId, snapshotToBaseline(localSnapB, envInfo.envId));
-          const bumpSql = buildAutoIncrementSql(localSnapB.prefix, localSnapB).join('\n');
-          const bumpPath = path.join(TEMP_DIR, `${localSiteId}-ai-bump.sql`);
-          fs.writeFileSync(bumpPath, bumpSql);
-          await runCommand(sync, findServiceBinary(['mysql-', 'mariadb-'], 'mysql')!, [
-            `-u${db.user}`, `-p${db.password}`, `--socket=${socketPath}`, db.database,
-          ], { stdinFile: bumpPath });
-          try { fs.unlinkSync(bumpPath); } catch (e) {}
-        } catch (e: any) {
-          console.warn('[Kinsta] Baseline/auto-increment step failed (non-fatal):', e.message);
-        }
+// Baseline + ID-collision prevention (merge-push feature)
+try {
+  sendProgress({ stage: 'database', progress: 97, message: 'Saving sync baseline...' });
+  const cliB = resolveLocalWpCli();
+  const localSnapB = await runLocalEvalFile<DbSnapshot>(
+    sync,
+    cliB,
+    localPublicPath,
+    socketPath,
+    SNAPSHOT_PHP,
+    [site.domain],
+  );
+  saveBaseline(
+    BASELINES_DIR,
+    localSiteId,
+    envInfo.envId,
+    snapshotToBaseline(localSnapB, envInfo.envId),
+  );
+  const bumpSql = buildAutoIncrementSql(localSnapB.prefix, localSnapB).join('\n');
+  const bumpPath = path.join(TEMP_DIR, `${localSiteId}-ai-bump.sql`);
+  fs.writeFileSync(bumpPath, bumpSql);
+  await runCommand(
+    sync,
+    findServiceBinary(['mysql-', 'mariadb-'], 'mysql')!,
+    [`-u${db.user}`, `-p${db.password}`, `--socket=${socketPath}`, db.database],
+    { stdinFile: bumpPath },
+  );
+  try {
+    fs.unlinkSync(bumpPath);
+  } catch (e) {}
+} catch (e: any) {
+  console.warn('[Kinsta] Baseline/auto-increment step failed (non-fatal):', e.message);
+}
 ```
 
 Same baseline block (minus the auto-increment bump) at the end of the overwrite-push
@@ -1452,6 +1794,7 @@ git commit -m "Add merge branch to the push pipeline with convergence and rollba
 ### Task 9: Renderer — sidebar mode select + tab switch
 
 **Files:**
+
 - Modify: `src/renderer/KinstaPushScreen.tsx`
 
 - [ ] **Step 1: Add state + DB preview wiring**
@@ -1459,26 +1802,29 @@ git commit -m "Add merge branch to the push pipeline with convergence and rollba
 In `KinstaPushScreen.tsx` add to the state block (after `kinstaBackup`, line ~135):
 
 ```tsx
-  type DbMode = 'merge' | 'overwrite';
-  const [dbMode, setDbMode] = useState<DbMode>('merge');
-  const [converge, setConverge] = useState(true);
-  const [activeTab, setActiveTab] = useState<'files' | 'database'>('files');
+type DbMode = 'merge' | 'overwrite';
+const [dbMode, setDbMode] = useState<DbMode>('merge');
+const [converge, setConverge] = useState(true);
+const [activeTab, setActiveTab] = useState<'files' | 'database'>('files');
 
-  // Mirrors DbDiffRow in src/main/dbMerge.ts (+ renderer selection state)
-  interface DbRow {
-    kind: 'post' | 'option' | 'term';
-    id: string; label: string; subtype: string;
-    change: 'push' | 'keep' | 'conflict' | 'delete-remote' | 'keep-deleted';
-    conflictKind?: 'edit-edit' | 'edit-delete' | 'delete-edit' | 'id-collision';
-    localModified?: string; remoteModified?: string;
-    selected: boolean;
-    resolution?: 'mine' | 'theirs';
-  }
-  const [dbRows, setDbRows] = useState<DbRow[]>([]);
-  const [dbLoading, setDbLoading] = useState(false);
-  const [dbError, setDbError] = useState<string | null>(null);
-  const [dbFirstRun, setDbFirstRun] = useState(false);
-  const dbPreviewSeq = useRef(0);
+// Mirrors DbDiffRow in src/main/dbMerge.ts (+ renderer selection state)
+interface DbRow {
+  kind: 'post' | 'option' | 'term';
+  id: string;
+  label: string;
+  subtype: string;
+  change: 'push' | 'keep' | 'conflict' | 'delete-remote' | 'keep-deleted';
+  conflictKind?: 'edit-edit' | 'edit-delete' | 'delete-edit' | 'id-collision';
+  localModified?: string;
+  remoteModified?: string;
+  selected: boolean;
+  resolution?: 'mine' | 'theirs';
+}
+const [dbRows, setDbRows] = useState<DbRow[]>([]);
+const [dbLoading, setDbLoading] = useState(false);
+const [dbError, setDbError] = useState<string | null>(null);
+const [dbFirstRun, setDbFirstRun] = useState(false);
+const dbPreviewSeq = useRef(0);
 ```
 
 (Define the `DbRow` interface at module level next to `DiffRow`, not inside the
@@ -1487,33 +1833,44 @@ component — shown inline here for locality.)
 Add the DB preview effect after the file-preview effect (line ~247):
 
 ```tsx
-  // DB merge preview — only when the database is included in merge mode
-  useEffect(() => {
-    if (!isOpen || !selectedEnvId || isPushing || isComplete) return;
-    if (!includeDatabase || dbMode !== 'merge') { setDbRows([]); setDbError(null); return; }
-    const seq = ++dbPreviewSeq.current;
-    setDbLoading(true);
+// DB merge preview — only when the database is included in merge mode
+useEffect(() => {
+  if (!isOpen || !selectedEnvId || isPushing || isComplete) return;
+  if (!includeDatabase || dbMode !== 'merge') {
+    setDbRows([]);
     setDbError(null);
-    const timer = setTimeout(async () => {
-      const envInfo = getEnvInfo(selectedEnvId);
-      if (!envInfo) { setDbLoading(false); return; }
-      const result = await ipcRenderer.invoke('kinsta:dbPreview', site.id, site, envInfo);
-      if (seq !== dbPreviewSeq.current) return;
+    return;
+  }
+  const seq = ++dbPreviewSeq.current;
+  setDbLoading(true);
+  setDbError(null);
+  const timer = setTimeout(async () => {
+    const envInfo = getEnvInfo(selectedEnvId);
+    if (!envInfo) {
       setDbLoading(false);
-      if (result.success) {
-        setDbFirstRun(!!result.firstRun);
-        setDbRows((result.rows || []).map((r: DbRow) => ({
+      return;
+    }
+    const result = await ipcRenderer.invoke('kinsta:dbPreview', site.id, site, envInfo);
+    if (seq !== dbPreviewSeq.current) return;
+    setDbLoading(false);
+    if (result.success) {
+      setDbFirstRun(!!result.firstRun);
+      setDbRows(
+        (result.rows || []).map((r: DbRow) => ({
           ...r,
-          selected: r.change === 'push',          // deletions + keep rows start unchecked
+          selected: r.change === 'push', // deletions + keep rows start unchecked
           resolution: undefined,
-        })));
-      } else {
-        setDbError(result.error || 'Database preview failed');
-        setDbRows([]);
-      }
-    }, 250);
-    return () => { clearTimeout(timer); };
-  }, [isOpen, selectedEnvId, includeDatabase, dbMode, environments]);
+        })),
+      );
+    } else {
+      setDbError(result.error || 'Database preview failed');
+      setDbRows([]);
+    }
+  }, 250);
+  return () => {
+    clearTimeout(timer);
+  };
+}, [isOpen, selectedEnvId, includeDatabase, dbMode, environments]);
 ```
 
 - [ ] **Step 2: Sidebar — DB mode select + convergence checkbox**
@@ -1521,24 +1878,26 @@ Add the DB preview effect after the file-preview effect (line ~247):
 Right under the "Include database" checkbox (line ~450), insert:
 
 ```tsx
-              {includeDatabase && (
-                <div style={{ paddingLeft: '26px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <FlySelect
-                    value={dbMode}
-                    options={{ merge: 'Merge changes', overwrite: 'Overwrite everything' }}
-                    onChange={(value: DbMode) => setDbMode(value)}
-                    disabled={isPushing}
-                  />
-                  {dbMode === 'merge' && (
-                    <Checkbox
-                      label="Update local with their changes"
-                      checked={converge}
-                      disabled={isPushing}
-                      onChange={(checked: boolean) => setConverge(checked)}
-                    />
-                  )}
-                </div>
-              )}
+{
+  includeDatabase && (
+    <div style={{ paddingLeft: '26px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <FlySelect
+        value={dbMode}
+        options={{ merge: 'Merge changes', overwrite: 'Overwrite everything' }}
+        onChange={(value: DbMode) => setDbMode(value)}
+        disabled={isPushing}
+      />
+      {dbMode === 'merge' && (
+        <Checkbox
+          label="Update local with their changes"
+          checked={converge}
+          disabled={isPushing}
+          onChange={(checked: boolean) => setConverge(checked)}
+        />
+      )}
+    </div>
+  );
+}
 ```
 
 - [ ] **Step 3: Tab switch above the toolbar**
@@ -1547,24 +1906,36 @@ In the right pane (before the toolbar div, line ~512), add the tab bar — shown
 when a DB merge preview participates:
 
 ```tsx
-                {includeDatabase && dbMode === 'merge' && (
-                  <div style={{ display: 'flex', borderBottom: border, flexShrink: 0 }}>
-                    {([['files', `Files (${rows.length})`], ['database', `Database (${dbRows.length})`]] as const).map(([key, label]) => (
-                      <button
-                        key={key}
-                        onClick={() => setActiveTab(key)}
-                        style={{
-                          padding: '10px 20px', fontSize: '13px', fontWeight: 600,
-                          background: 'none', border: 'none', cursor: 'pointer',
-                          color: 'inherit', opacity: activeTab === key ? 1 : 0.55,
-                          borderBottom: activeTab === key ? '2px solid currentColor' : '2px solid transparent',
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
+{
+  includeDatabase && dbMode === 'merge' && (
+    <div style={{ display: 'flex', borderBottom: border, flexShrink: 0 }}>
+      {(
+        [
+          ['files', `Files (${rows.length})`],
+          ['database', `Database (${dbRows.length})`],
+        ] as const
+      ).map(([key, label]) => (
+        <button
+          key={key}
+          onClick={() => setActiveTab(key)}
+          style={{
+            padding: '10px 20px',
+            fontSize: '13px',
+            fontWeight: 600,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'inherit',
+            opacity: activeTab === key ? 1 : 0.55,
+            borderBottom: activeTab === key ? '2px solid currentColor' : '2px solid transparent',
+          }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 ```
 
 Wrap the existing toolbar + degraded banner + table region in
@@ -1591,6 +1962,7 @@ git commit -m "Add database mode select and Files/Database tabs to push screen"
 ### Task 10: Renderer — the database tab
 
 **Files:**
+
 - Create: `src/renderer/PushDatabaseTab.tsx`
 - Modify: `src/renderer/KinstaPushScreen.tsx`
 
@@ -1600,36 +1972,48 @@ git commit -m "Add database mode select and Files/Database tabs to push screen"
 // src/renderer/PushDatabaseTab.tsx
 import * as React from 'react';
 import {
-  Checkbox, FlySelect, Spinner, VirtualTable, IVirtualTableCellRendererDataArgs,
+  Checkbox,
+  FlySelect,
+  Spinner,
+  VirtualTable,
+  IVirtualTableCellRendererDataArgs,
 } from '@getflywheel/local-components';
 
 // Mirrors DbDiffRow in src/main/dbMerge.ts (+ renderer selection state)
 export interface DbRow {
   kind: 'post' | 'option' | 'term';
-  id: string; label: string; subtype: string;
+  id: string;
+  label: string;
+  subtype: string;
   change: 'push' | 'keep' | 'conflict' | 'delete-remote' | 'keep-deleted';
   conflictKind?: 'edit-edit' | 'edit-delete' | 'delete-edit' | 'id-collision';
-  localModified?: string; remoteModified?: string;
+  localModified?: string;
+  remoteModified?: string;
   selected: boolean;
   resolution?: 'mine' | 'theirs';
 }
 
 const CHANGE_LABEL: Record<DbRow['change'], string> = {
-  'push': 'Will be pushed',
-  'keep': 'Their change — kept',
-  'conflict': 'Conflict',
+  push: 'Will be pushed',
+  keep: 'Their change — kept',
+  conflict: 'Conflict',
   'delete-remote': 'Will be deleted on Kinsta',
   'keep-deleted': 'Deleted on Kinsta — kept',
 };
 const SUBTYPE_LABEL = (r: DbRow): string => {
   if (r.kind === 'option') return 'Option';
-  if (r.kind === 'term') return r.subtype === 'category' ? 'Category' : r.subtype === 'post_tag' ? 'Tag' : 'Term';
+  if (r.kind === 'term')
+    return r.subtype === 'category' ? 'Category' : r.subtype === 'post_tag' ? 'Tag' : 'Term';
   return r.subtype === 'page' ? 'Page' : r.subtype === 'post' ? 'Post' : r.subtype;
 };
 const fmtWpDate = (s?: string): string => {
   if (!s) return '';
   const d = new Date(s + 'Z');
-  return isNaN(d.getTime()) ? '' : d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return isNaN(d.getTime())
+    ? ''
+    : d.toLocaleDateString() +
+        ' ' +
+        d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 const rowKey = (r: DbRow): string => `${r.kind}:${r.id}`;
 
@@ -1643,14 +2027,27 @@ interface Props {
   onResolve: (key: string, resolution: 'mine' | 'theirs') => void;
 }
 
-const PushDatabaseTab: React.FC<Props> = ({ rows, loading, error, firstRun, border, onToggle, onResolve }) => {
-  const pushCount = rows.filter(r =>
-    (r.change === 'push' || r.change === 'delete-remote') && r.selected ||
-    (r.change === 'conflict' && r.resolution === 'mine')).length;
-  const keepCount = rows.filter(r =>
-    r.change === 'keep' || r.change === 'keep-deleted' ||
-    (r.change === 'conflict' && r.resolution === 'theirs')).length;
-  const unresolved = rows.filter(r => r.change === 'conflict' && !r.resolution).length;
+const PushDatabaseTab: React.FC<Props> = ({
+  rows,
+  loading,
+  error,
+  firstRun,
+  border,
+  onToggle,
+  onResolve,
+}) => {
+  const pushCount = rows.filter(
+    (r) =>
+      ((r.change === 'push' || r.change === 'delete-remote') && r.selected) ||
+      (r.change === 'conflict' && r.resolution === 'mine'),
+  ).length;
+  const keepCount = rows.filter(
+    (r) =>
+      r.change === 'keep' ||
+      r.change === 'keep-deleted' ||
+      (r.change === 'conflict' && r.resolution === 'theirs'),
+  ).length;
+  const unresolved = rows.filter((r) => r.change === 'conflict' && !r.resolution).length;
 
   const cellRenderer = (args: IVirtualTableCellRendererDataArgs): React.ReactNode => {
     const { colKey, isHeader, rowData } = args;
@@ -1678,16 +2075,27 @@ const PushDatabaseTab: React.FC<Props> = ({ rows, loading, error, firstRun, bord
         );
       case 'label':
         return (
-          <span style={{ fontFamily: row.kind === 'option' ? 'monospace' : undefined, fontSize: '12px' }}>
-            {row.change === 'conflict' ? '⚠ ' : ''}{row.label}
+          <span
+            style={{
+              fontFamily: row.kind === 'option' ? 'monospace' : undefined,
+              fontSize: '12px',
+            }}
+          >
+            {row.change === 'conflict' ? '⚠ ' : ''}
+            {row.label}
           </span>
         );
       case 'subtype':
         return <span style={{ opacity: 0.7 }}>{SUBTYPE_LABEL(row)}</span>;
       case 'change': {
-        const color = row.change === 'conflict' ? '#fcc419'
-          : row.change === 'delete-remote' ? '#d04d5c'
-          : row.change === 'push' ? '#50c083' : undefined;
+        const color =
+          row.change === 'conflict'
+            ? '#fcc419'
+            : row.change === 'delete-remote'
+              ? '#d04d5c'
+              : row.change === 'push'
+                ? '#50c083'
+                : undefined;
         return <span style={{ color }}>{CHANGE_LABEL[row.change]}</span>;
       }
       case 'localModified':
@@ -1700,38 +2108,81 @@ const PushDatabaseTab: React.FC<Props> = ({ rows, loading, error, firstRun, bord
 
   return (
     <>
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 20px', borderBottom: border, flexShrink: 0, fontSize: '13px',
-      }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 20px',
+          borderBottom: border,
+          flexShrink: 0,
+          fontSize: '13px',
+        }}
+      >
         <span style={{ fontWeight: 600 }}>Database changes</span>
         <div style={{ display: 'flex', gap: '14px', opacity: 0.85 }}>
-          <span>↑ <strong>{pushCount}</strong> push</span>
+          <span>
+            ↑ <strong>{pushCount}</strong> push
+          </span>
           <span style={{ opacity: 0.3 }}>|</span>
           <span>🔒 {keepCount} kept</span>
           <span style={{ opacity: 0.3 }}>|</span>
-          <span style={{ color: unresolved ? '#fcc419' : undefined }}>⚠ {unresolved} unresolved</span>
+          <span style={{ color: unresolved ? '#fcc419' : undefined }}>
+            ⚠ {unresolved} unresolved
+          </span>
         </div>
       </div>
       {firstRun && (
-        <div style={{
-          padding: '8px 20px', fontSize: '12px', color: '#fcc419',
-          backgroundColor: 'rgba(252,196,25,0.08)', borderBottom: border, flexShrink: 0,
-        }}>
-          First merge for this environment — classification uses modification dates until a
-          sync baseline exists (created automatically after this push or the next pull).
+        <div
+          style={{
+            padding: '8px 20px',
+            fontSize: '12px',
+            color: '#fcc419',
+            backgroundColor: 'rgba(252,196,25,0.08)',
+            borderBottom: border,
+            flexShrink: 0,
+          }}
+        >
+          First merge for this environment — classification uses modification dates until a sync
+          baseline exists (created automatically after this push or the next pull).
         </div>
       )}
       {loading ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', opacity: 0.65 }}>
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            opacity: 0.65,
+          }}
+        >
           <Spinner /> Comparing databases…
         </div>
       ) : error ? (
-        <div style={{ flex: 1, padding: '24px', color: '#d04d5c', fontSize: '13px', whiteSpace: 'pre-wrap' }}>
+        <div
+          style={{
+            flex: 1,
+            padding: '24px',
+            color: '#d04d5c',
+            fontSize: '13px',
+            whiteSpace: 'pre-wrap',
+          }}
+        >
           {error}
         </div>
       ) : rows.length === 0 ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.65, fontSize: '14px' }}>
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: 0.65,
+            fontSize: '14px',
+          }}
+        >
           Databases are in sync — nothing to merge.
         </div>
       ) : (
@@ -1773,17 +2224,21 @@ in the parent, pass `dbRows.map(r => ({ ...r, key: `${r.kind}:${r.id}` }))`.
 Replace the Task 9 placeholder with:
 
 ```tsx
-                  <PushDatabaseTab
-                    rows={dbRows.map(r => ({ ...r, key: `${r.kind}:${r.id}` })) as any}
-                    loading={dbLoading}
-                    error={dbError}
-                    firstRun={dbFirstRun}
-                    border={border}
-                    onToggle={(key, checked) => setDbRows(rs => rs.map(r =>
-                      `${r.kind}:${r.id}` === key ? { ...r, selected: checked } : r))}
-                    onResolve={(key, resolution) => setDbRows(rs => rs.map(r =>
-                      `${r.kind}:${r.id}` === key ? { ...r, resolution } : r))}
-                  />
+<PushDatabaseTab
+  rows={dbRows.map((r) => ({ ...r, key: `${r.kind}:${r.id}` })) as any}
+  loading={dbLoading}
+  error={dbError}
+  firstRun={dbFirstRun}
+  border={border}
+  onToggle={(key, checked) =>
+    setDbRows((rs) =>
+      rs.map((r) => (`${r.kind}:${r.id}` === key ? { ...r, selected: checked } : r)),
+    )
+  }
+  onResolve={(key, resolution) =>
+    setDbRows((rs) => rs.map((r) => (`${r.kind}:${r.id}` === key ? { ...r, resolution } : r)))
+  }
+/>
 ```
 
 Import at top: `import PushDatabaseTab, { DbRow } from './PushDatabaseTab';`
@@ -1822,6 +2277,7 @@ git commit -m "Add database diff tab with conflict resolution to push preview"
 ### Task 11: Renderer — wire executePush + confirm modal
 
 **Files:**
+
 - Modify: `src/renderer/KinstaPushScreen.tsx`
 
 - [ ] **Step 1: Compute selections and extend the push invoke**
@@ -1829,44 +2285,66 @@ git commit -m "Add database diff tab with conflict resolution to push preview"
 In `executePush` (line ~269), build the selections and pass them:
 
 ```tsx
-    const sel = {
-      pushPosts: [] as string[], pushOptions: [] as string[], pushTerms: [] as string[],
-      deletePostsRemote: [] as string[], deleteOptionsRemote: [] as string[], deleteTermsRemote: [] as string[],
-      pullPosts: [] as string[], pullOptions: [] as string[], pullTerms: [] as string[],
-      deletePostsLocal: [] as string[], deleteOptionsLocal: [] as string[], deleteTermsLocal: [] as string[],
-      converge,
-    };
-    const pushList = (r: DbRow) => r.kind === 'post' ? sel.pushPosts : r.kind === 'option' ? sel.pushOptions : sel.pushTerms;
-    const delRemote = (r: DbRow) => r.kind === 'post' ? sel.deletePostsRemote : r.kind === 'option' ? sel.deleteOptionsRemote : sel.deleteTermsRemote;
-    const pullList = (r: DbRow) => r.kind === 'post' ? sel.pullPosts : r.kind === 'option' ? sel.pullOptions : sel.pullTerms;
-    const delLocal = (r: DbRow) => r.kind === 'post' ? sel.deletePostsLocal : r.kind === 'option' ? sel.deleteOptionsLocal : sel.deleteTermsLocal;
-    for (const r of dbRows) {
-      if (r.change === 'push' && r.selected) pushList(r).push(r.id);
-      else if (r.change === 'delete-remote' && r.selected) delRemote(r).push(r.id);
-      else if (r.change === 'keep') pullList(r).push(r.id);
-      else if (r.change === 'keep-deleted') delLocal(r).push(r.id);
-      else if (r.change === 'conflict' && r.resolution === 'mine') {
-        // mine wins: my edit (or my new row) goes up; my deletion deletes remotely
-        if (r.conflictKind === 'delete-edit') delRemote(r).push(r.id);
-        else pushList(r).push(r.id);
-      } else if (r.change === 'conflict' && r.resolution === 'theirs') {
-        // theirs wins: local converges to their version (or their deletion)
-        if (r.conflictKind === 'edit-delete') delLocal(r).push(r.id);
-        else pullList(r).push(r.id);
-      }
-    }
+const sel = {
+  pushPosts: [] as string[],
+  pushOptions: [] as string[],
+  pushTerms: [] as string[],
+  deletePostsRemote: [] as string[],
+  deleteOptionsRemote: [] as string[],
+  deleteTermsRemote: [] as string[],
+  pullPosts: [] as string[],
+  pullOptions: [] as string[],
+  pullTerms: [] as string[],
+  deletePostsLocal: [] as string[],
+  deleteOptionsLocal: [] as string[],
+  deleteTermsLocal: [] as string[],
+  converge,
+};
+const pushList = (r: DbRow) =>
+  r.kind === 'post' ? sel.pushPosts : r.kind === 'option' ? sel.pushOptions : sel.pushTerms;
+const delRemote = (r: DbRow) =>
+  r.kind === 'post'
+    ? sel.deletePostsRemote
+    : r.kind === 'option'
+      ? sel.deleteOptionsRemote
+      : sel.deleteTermsRemote;
+const pullList = (r: DbRow) =>
+  r.kind === 'post' ? sel.pullPosts : r.kind === 'option' ? sel.pullOptions : sel.pullTerms;
+const delLocal = (r: DbRow) =>
+  r.kind === 'post'
+    ? sel.deletePostsLocal
+    : r.kind === 'option'
+      ? sel.deleteOptionsLocal
+      : sel.deleteTermsLocal;
+for (const r of dbRows) {
+  if (r.change === 'push' && r.selected) pushList(r).push(r.id);
+  else if (r.change === 'delete-remote' && r.selected) delRemote(r).push(r.id);
+  else if (r.change === 'keep') pullList(r).push(r.id);
+  else if (r.change === 'keep-deleted') delLocal(r).push(r.id);
+  else if (r.change === 'conflict' && r.resolution === 'mine') {
+    // mine wins: my edit (or my new row) goes up; my deletion deletes remotely
+    if (r.conflictKind === 'delete-edit') delRemote(r).push(r.id);
+    else pushList(r).push(r.id);
+  } else if (r.change === 'conflict' && r.resolution === 'theirs') {
+    // theirs wins: local converges to their version (or their deletion)
+    if (r.conflictKind === 'edit-delete') delLocal(r).push(r.id);
+    else pullList(r).push(r.id);
+  }
+}
 
-    const result = await ipcRenderer.invoke('kinsta:push', site.id, site, envInfo, {
-      includeDatabase,
-      includeUploads,
-      kinstaBackup,
-      mode,
-      ...(includeDatabase ? { dbMode, ...(dbMode === 'merge' ? { dbSelections: sel } : {}) } : {}),
-      ...(allSelected && mode === 'all' ? {} : {
-        files: selectedRows.filter(r => r.op !== 'delete').map(r => r.path),
-        deletions: selectedRows.filter(r => r.op === 'delete').map(r => r.path),
+const result = await ipcRenderer.invoke('kinsta:push', site.id, site, envInfo, {
+  includeDatabase,
+  includeUploads,
+  kinstaBackup,
+  mode,
+  ...(includeDatabase ? { dbMode, ...(dbMode === 'merge' ? { dbSelections: sel } : {}) } : {}),
+  ...(allSelected && mode === 'all'
+    ? {}
+    : {
+        files: selectedRows.filter((r) => r.op !== 'delete').map((r) => r.path),
+        deletions: selectedRows.filter((r) => r.op === 'delete').map((r) => r.path),
       }),
-    });
+});
 ```
 
 - [ ] **Step 2: Update the confirm modal copy**
@@ -1874,13 +2352,30 @@ In `executePush` (line ~269), build the selections and pass them:
 Replace the `includeDatabase && …database will be replaced…` sentence (line ~607):
 
 ```tsx
-            {includeDatabase && dbMode === 'overwrite' && (
-              <>The {isLive ? 'production' : 'staging'} database will be replaced with your local database. </>
-            )}
-            {includeDatabase && dbMode === 'merge' && (
-              <>Database: {sel === undefined ? '' : ''}{dbRows.filter(r => (r.change === 'push' && r.selected) || (r.change === 'conflict' && r.resolution === 'mine')).length} change(s)
-              will be merged into the {isLive ? 'production' : 'staging'} database — their other changes are kept. </>
-            )}
+{
+  includeDatabase && dbMode === 'overwrite' && (
+    <>
+      The {isLive ? 'production' : 'staging'} database will be replaced with your local
+      database.{' '}
+    </>
+  );
+}
+{
+  includeDatabase && dbMode === 'merge' && (
+    <>
+      Database: {sel === undefined ? '' : ''}
+      {
+        dbRows.filter(
+          (r) =>
+            (r.change === 'push' && r.selected) ||
+            (r.change === 'conflict' && r.resolution === 'mine'),
+        ).length
+      }{' '}
+      change(s) will be merged into the {isLive ? 'production' : 'staging'} database — their other
+      changes are kept.{' '}
+    </>
+  );
+}
 ```
 
 (Compute the counts from `dbRows` directly — `sel` only exists inside `executePush`.)
@@ -1908,6 +2403,7 @@ git commit -m "Wire database merge selections into the push flow"
 ### Task 12: Docs + finish
 
 **Files:**
+
 - Modify: `CLAUDE.md` (architecture section: dbMerge.ts, dbMergePhp.ts, dbPreview handler, baseline storage, merge pipeline, convergence, auto-increment offset)
 - Modify: `README.md` (Features bullet, "What a sync does" merge paragraph, Safety nets: baseline + local backup + rollback, Troubleshooting: first-run banner)
 
@@ -1920,6 +2416,7 @@ git commit -m "Wire database merge selections into the push flow"
 ```bash
 npm run build && npm test
 ```
+
 All green. CDP screenshot pass over both tabs.
 
 - [ ] **Step 4: Commit**

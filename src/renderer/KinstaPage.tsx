@@ -90,7 +90,7 @@ function formatTimestamp(ts?: string): string {
   if (!ts) return 'Never';
   try {
     return new Date(ts).toLocaleString();
-  } catch (e) {
+  } catch {
     return 'Never';
   }
 }
@@ -134,7 +134,8 @@ const KinstaPage: React.FC<Props> = ({ site }) => {
     const config = await ipcRenderer.invoke('kinsta:getConfig');
     setIsConnected(!!config.apiKey);
     setCompanyId(config.companyId || null);
-    const siteLink: SiteLink | null = (await ipcRenderer.invoke('kinsta:getSiteLink', site.id)) ?? null;
+    const siteLink: SiteLink | null =
+      (await ipcRenderer.invoke('kinsta:getSiteLink', site.id)) ?? null;
     setLink(siteLink);
     setLoaded(true);
 
@@ -142,8 +143,9 @@ const KinstaPage: React.FC<Props> = ({ site }) => {
       const result = await ipcRenderer.invoke('kinsta:getEnvironments', siteLink.kinstaSiteId);
       if (result.success) {
         // Production first
-        const envs = [...result.environments].sort((a: Environment, b: Environment) =>
-          Number(b.is_premium) - Number(a.is_premium));
+        const envs = [...result.environments].sort(
+          (a: Environment, b: Environment) => Number(b.is_premium) - Number(a.is_premium),
+        );
         setEnvironments(envs);
       }
     } else {
@@ -153,6 +155,7 @@ const KinstaPage: React.FC<Props> = ({ site }) => {
 
   useEffect(() => {
     refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh() only reads site.id; re-run on site change
   }, [site.id]);
 
   // KinstaDrawerHost dispatches this after link/unlink/sync so the page stays fresh
@@ -163,14 +166,15 @@ const KinstaPage: React.FC<Props> = ({ site }) => {
     };
     window.addEventListener('kinsta:state-changed', handler);
     return () => window.removeEventListener('kinsta:state-changed', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- subscribe once per site; handler reads the current site.id closure
   }, [site.id]);
 
   const handleClearCache = async (env: Environment) => {
-    setCacheState(s => ({ ...s, [env.id]: 'busy' }));
+    setCacheState((s) => ({ ...s, [env.id]: 'busy' }));
     const result = await ipcRenderer.invoke('kinsta:clearCache', env.id, env.cdn_cache_id);
-    setCacheState(s => ({ ...s, [env.id]: result.success ? 'done' : 'error' }));
+    setCacheState((s) => ({ ...s, [env.id]: result.success ? 'done' : 'error' }));
     setTimeout(() => {
-      setCacheState(s => {
+      setCacheState((s) => {
         const next = { ...s };
         delete next[env.id];
         return next;
@@ -183,7 +187,7 @@ const KinstaPage: React.FC<Props> = ({ site }) => {
   const openMyKinsta = () => {
     if (link && companyId && environments.length > 0) {
       shell.openExternal(
-        `https://my.kinsta.com/sites/details/${link.kinstaSiteId}/${environments[0].id}?idCompany=${companyId}`
+        `https://my.kinsta.com/sites/details/${link.kinstaSiteId}/${environments[0].id}?idCompany=${companyId}`,
       );
     } else {
       shell.openExternal('https://my.kinsta.com/sites');
@@ -205,147 +209,179 @@ const KinstaPage: React.FC<Props> = ({ site }) => {
     // Local pages own their scrolling — without this the content clips
     // behind the bottom bar (Live Link / Pull / Push)
     <div style={{ height: '100%', overflowY: 'auto' }}>
-    <div style={{ padding: '20px 30px 48px', maxWidth: '720px' }}>
-      {/* Title bar — docs require the add-on name here */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '20px 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <KinstaIcon size={36} />
-          <Title size="l" style={{ margin: 0 }}>
-            Kinsta Sync
-          </Title>
+      <div style={{ padding: '20px 30px 48px', maxWidth: '720px' }}>
+        {/* Title bar — docs require the add-on name here */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            margin: '20px 0',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <KinstaIcon size={36} />
+            <Title size="l" style={{ margin: 0 }}>
+              Kinsta Sync
+            </Title>
+          </div>
+          <TextButton onClick={openMyKinsta}>Open MyKinsta ↗</TextButton>
         </div>
-        <TextButton onClick={openMyKinsta}>
-          Open MyKinsta ↗
-        </TextButton>
-      </div>
 
-      {isConnected && link ? (
-        <>
-          {/* Link status */}
-          <div style={cardStyle}>
-            <div style={rowStyle}>
-              <span style={labelStyle}>Linked site</span>
-              <span style={{ fontWeight: 600 }}>{link.kinstaSiteName}</span>
-            </div>
-            <div style={rowStyle}>
-              <span style={labelStyle}>Last pulled</span>
-              <span>{formatTimestamp(link.lastPullAt)}</span>
-            </div>
-            <div style={lastRowStyle}>
-              <span style={labelStyle}>Last pushed</span>
-              <span>{formatTimestamp(link.lastPushAt)}</span>
-            </div>
-          </div>
-
-          {/* Sync actions — open the existing drawers via KinstaDrawerHost */}
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '28px' }}>
-            <PrimaryButton onClick={() => dispatchKinstaAction('pull', site.id)}>
-              Pull from Kinsta
-            </PrimaryButton>
-            <PrimaryButton onClick={() => dispatchKinstaAction('push', site.id)}>
-              Push to Kinsta
-            </PrimaryButton>
-          </div>
-
-          {/* Environments */}
-          <div style={sectionTitleStyle}>Environments</div>
-          <div style={cardStyle}>
-            {environments.length === 0 ? (
-              <div style={{ padding: '16px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Spinner />
-                <span style={{ opacity: 0.6, fontSize: '13px' }}>Loading environments...</span>
+        {isConnected && link ? (
+          <>
+            {/* Link status */}
+            <div style={cardStyle}>
+              <div style={rowStyle}>
+                <span style={labelStyle}>Linked site</span>
+                <span style={{ fontWeight: 600 }}>{link.kinstaSiteName}</span>
               </div>
-            ) : (
-              environments.map((env, idx) => (
-                <div key={env.id} style={idx === environments.length - 1 ? lastRowStyle : rowStyle}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <span style={{ fontWeight: 600 }}>{envLabel(env)}</span>
-                    <span style={{ fontSize: '12px', opacity: 0.6 }}>{envDomain(env)}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      style={smallButtonStyle}
-                      onClick={() => shell.openExternal(`https://${envDomain(env)}`)}
-                    >
-                      Open site ↗
-                    </button>
-                    <button
-                      style={smallButtonStyle}
-                      onClick={() => handleCopySsh(env)}
-                    >
-                      {copiedEnvId === env.id ? 'Copied!' : 'Copy SSH'}
-                    </button>
-                    <button
-                      style={{
-                        ...smallButtonStyle,
-                        ...(cacheState[env.id] === 'done' ? { borderColor: '#50c083', color: '#50c083' } : {}),
-                        ...(cacheState[env.id] === 'error' ? { borderColor: '#d04d5c', color: '#d04d5c' } : {}),
-                      }}
-                      onClick={() => handleClearCache(env)}
-                      disabled={cacheState[env.id] === 'busy'}
-                    >
-                      {cacheState[env.id] === 'busy' ? 'Clearing...'
-                        : cacheState[env.id] === 'done' ? 'Cache cleared ✓'
-                        : cacheState[env.id] === 'error' ? 'Failed'
-                        : 'Clear cache'}
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+              <div style={rowStyle}>
+                <span style={labelStyle}>Last pulled</span>
+                <span>{formatTimestamp(link.lastPullAt)}</span>
+              </div>
+              <div style={lastRowStyle}>
+                <span style={labelStyle}>Last pushed</span>
+                <span>{formatTimestamp(link.lastPushAt)}</span>
+              </div>
+            </div>
 
-          {/* Sync history */}
-          <div style={sectionTitleStyle}>Recent syncs</div>
-          <div style={cardStyle}>
-            {(link.history && link.history.length > 0) ? (
-              link.history.map((entry, idx) => (
+            {/* Sync actions — open the existing drawers via KinstaDrawerHost */}
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '28px' }}>
+              <PrimaryButton onClick={() => dispatchKinstaAction('pull', site.id)}>
+                Pull from Kinsta
+              </PrimaryButton>
+              <PrimaryButton onClick={() => dispatchKinstaAction('push', site.id)}>
+                Push to Kinsta
+              </PrimaryButton>
+            </div>
+
+            {/* Environments */}
+            <div style={sectionTitleStyle}>Environments</div>
+            <div style={cardStyle}>
+              {environments.length === 0 ? (
                 <div
-                  key={`${entry.at}-${idx}`}
-                  style={idx === link.history!.length - 1 ? lastRowStyle : rowStyle}
+                  style={{ padding: '16px 0', display: 'flex', alignItems: 'center', gap: '10px' }}
                 >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ color: entry.mode === 'pull' ? '#50c083' : '#fcc419', fontSize: '13px' }}>
-                      {entry.mode === 'pull' ? '⬇ Pull' : '⬆ Push'}
+                  <Spinner />
+                  <span style={{ opacity: 0.6, fontSize: '13px' }}>Loading environments...</span>
+                </div>
+              ) : (
+                environments.map((env, idx) => (
+                  <div
+                    key={env.id}
+                    style={idx === environments.length - 1 ? lastRowStyle : rowStyle}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <span style={{ fontWeight: 600 }}>{envLabel(env)}</span>
+                      <span style={{ fontSize: '12px', opacity: 0.6 }}>{envDomain(env)}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        style={smallButtonStyle}
+                        onClick={() => shell.openExternal(`https://${envDomain(env)}`)}
+                      >
+                        Open site ↗
+                      </button>
+                      <button style={smallButtonStyle} onClick={() => handleCopySsh(env)}>
+                        {copiedEnvId === env.id ? 'Copied!' : 'Copy SSH'}
+                      </button>
+                      <button
+                        style={{
+                          ...smallButtonStyle,
+                          ...(cacheState[env.id] === 'done'
+                            ? { borderColor: '#50c083', color: '#50c083' }
+                            : {}),
+                          ...(cacheState[env.id] === 'error'
+                            ? { borderColor: '#d04d5c', color: '#d04d5c' }
+                            : {}),
+                        }}
+                        onClick={() => handleClearCache(env)}
+                        disabled={cacheState[env.id] === 'busy'}
+                      >
+                        {cacheState[env.id] === 'busy'
+                          ? 'Clearing...'
+                          : cacheState[env.id] === 'done'
+                            ? 'Cache cleared ✓'
+                            : cacheState[env.id] === 'error'
+                              ? 'Failed'
+                              : 'Clear cache'}
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Sync history */}
+            <div style={sectionTitleStyle}>Recent syncs</div>
+            <div style={cardStyle}>
+              {link.history && link.history.length > 0 ? (
+                link.history.map((entry, idx) => (
+                  <div
+                    key={`${entry.at}-${idx}`}
+                    style={idx === link.history!.length - 1 ? lastRowStyle : rowStyle}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span
+                        style={{
+                          color: entry.mode === 'pull' ? '#50c083' : '#fcc419',
+                          fontSize: '13px',
+                        }}
+                      >
+                        {entry.mode === 'pull' ? '⬇ Pull' : '⬆ Push'}
+                      </span>
+                      <span style={{ opacity: 0.6, fontSize: '13px' }}>
+                        {entry.envType === 'live' ? 'Production' : 'Staging'}
+                      </span>
                     </span>
                     <span style={{ opacity: 0.6, fontSize: '13px' }}>
-                      {entry.envType === 'live' ? 'Production' : 'Staging'}
+                      {formatTimestamp(entry.at)} · {formatDuration(entry.durationMs)}
                     </span>
-                  </span>
-                  <span style={{ opacity: 0.6, fontSize: '13px' }}>
-                    {formatTimestamp(entry.at)} · {formatDuration(entry.durationMs)}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <div style={{ ...lastRowStyle, opacity: 0.5 }}>No syncs yet</div>
-            )}
-          </div>
+                  </div>
+                ))
+              ) : (
+                <div style={{ ...lastRowStyle, opacity: 0.5 }}>No syncs yet</div>
+              )}
+            </div>
 
-          {/* Secondary actions */}
-          <div style={{
-            paddingTop: '16px',
-            borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-          }}>
-            <TextButton onClick={() => dispatchKinstaAction('unlink', site.id)} style={{ opacity: 0.7 }}>
-              Unlink from Kinsta
-            </TextButton>
-          </div>
-        </>
-      ) : (
-        <>
-          {/* Not linked yet */}
-          <p style={{ opacity: 0.7, fontSize: '14px', lineHeight: 1.6, marginBottom: '24px', maxWidth: '480px' }}>
-            {isConnected
-              ? `Link ${site.name || 'this site'} to a Kinsta site to pull and push files and database between Local and Kinsta.`
-              : 'Connect your Kinsta account and link this site to pull and push files and database between Local and Kinsta.'}
-          </p>
-          <PrimaryButton onClick={() => dispatchKinstaAction('link', site.id)}>
-            Link to Kinsta
-          </PrimaryButton>
-        </>
-      )}
-    </div>
+            {/* Secondary actions */}
+            <div
+              style={{
+                paddingTop: '16px',
+                borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+              }}
+            >
+              <TextButton
+                onClick={() => dispatchKinstaAction('unlink', site.id)}
+                style={{ opacity: 0.7 }}
+              >
+                Unlink from Kinsta
+              </TextButton>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Not linked yet */}
+            <p
+              style={{
+                opacity: 0.7,
+                fontSize: '14px',
+                lineHeight: 1.6,
+                marginBottom: '24px',
+                maxWidth: '480px',
+              }}
+            >
+              {isConnected
+                ? `Link ${site.name || 'this site'} to a Kinsta site to pull and push files and database between Local and Kinsta.`
+                : 'Connect your Kinsta account and link this site to pull and push files and database between Local and Kinsta.'}
+            </p>
+            <PrimaryButton onClick={() => dispatchKinstaAction('link', site.id)}>
+              Link to Kinsta
+            </PrimaryButton>
+          </>
+        )}
+      </div>
     </div>
   );
 };

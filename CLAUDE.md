@@ -14,14 +14,15 @@ A Local (by WP Engine) add-on that syncs WordPress sites between Local and Kinst
 
 Local add-ons are Electron apps with two entry points, declared in `package.json`:
 
-| Key | File | Process | Use |
-|---|---|---|---|
-| `main` | `lib/main/index.js` | Main (Node) | Background work, runs even when window is closed |
+| Key        | File                    | Process       | Use                                              |
+| ---------- | ----------------------- | ------------- | ------------------------------------------------ |
+| `main`     | `lib/main/index.js`     | Main (Node)   | Background work, runs even when window is closed |
 | `renderer` | `lib/renderer/index.js` | Renderer (UI) | React UI, registers hooks with Local's interface |
 
 Both modules `export default function (context) {...}` — Local passes a `context` object.
 
 ### Main Process (`src/main/index.ts`)
+
 - Handles IPC communication with renderer
 - Manages Kinsta API calls (axios — `context.request` was removed in Local 8.0)
 - Runs rsync/SSH/mysql via **async `spawn` with arg arrays** (`runCommand` helper) — never `execSync` (blocks Local's main process) and never shell strings (injection surface). `child_process` is allowed per docs.
@@ -38,6 +39,7 @@ Both modules `export default function (context) {...}` — Local passes a `conte
 - `siteDeleted` action hook removes stale site links
 
 ### Renderer Process (`src/renderer/`)
+
 - `index.tsx` — Registers hooks with Local (drawer host + Kinsta page route + More-menu navigation + preferences)
 - `KinstaPage.tsx` — The add-on's home: a dedicated page under the site's More tab (route `/main/site-info/:siteId/kinsta`). Shows link status, last pulled/pushed, and Pull/Push/Link/Unlink actions. Title bar says "Kinsta" (docs requirement for new tabs).
 - `KinstaSitePanel.tsx` — `KinstaDrawerHost`: invisible component mounted via `SiteInfo_TabNav_Items`; owns the drawers and listens for `kinsta:action` events
@@ -47,6 +49,7 @@ Both modules `export default function (context) {...}` — Local passes a `conte
 - `KinstaSettings.tsx` — Preferences panel for API configuration
 
 ### UI architecture (native pattern per "Giving your add-on a home")
+
 - **More menu** holds ONE navigation item ("Kinsta") → `events.send('goToRoute', '/main/site-info/${site.id}/kinsta')`. Per Local's docs and their own Volumes example, More is for navigation to add-on tabs — not raw actions.
 - **The Kinsta page** is registered via the `routes[site-info]` content hook. Local renders the hook's result inside its react-router `<Switch>` and passes `{ routeChildrenProps }` (contains `site`, `siteStatus`, `params`, ...). Return a real `<Route>` from Local's shared `react-router-dom` with an explicit `path` — Switch matches on the child's `path` prop, and a pathless element would swallow the overview fallback route below it.
 - **Event flow:** page/menu dispatch `kinsta:action` (link/pull/push/unlink) → `KinstaDrawerHost` opens the right drawer (link-drawer fallback if unlinked). Host dispatches `kinsta:state-changed` after link/unlink/drawer-close → page refreshes its data. No re-render hacks needed since the menu item is static.
@@ -60,6 +63,7 @@ Modeled on WordPress' Plugin API. Three types:
 - **Actions** — `hooks.addAction(name, cb)`: no return value needed.
 
 ### Hooks we use
+
 - `SiteInfo_TabNav_Items` (content) — mounts the invisible `KinstaDrawerHost` (no visible UI)
 - `SiteInfo_Top_TopRight` (content) — `KinstaStatusBadge`: "Linked to Kinsta" / live "Pulling… 42%" in the site view's top-right; click navigates to the Kinsta page. Hidden for unlinked sites. Sync-progress IPC events carry `siteId` + `mode` so badge and drawer filter per site; `error`/`cancelled` stages clear the badge.
 - `routes[site-info]` (content) — registers the Kinsta page route inside Local's site-info `<Switch>`
@@ -68,15 +72,18 @@ Modeled on WordPress' Plugin API. Three types:
 - `siteDeleted` (action, main process) — removes the stored site link when a site is deleted in Local
 
 ### Other useful hooks (from docs)
+
 - Content: `SiteInfoOverview:Before`, `SiteInfoUtilities`, `SiteInfo_Top_TopRight` (site, siteStatus), `SitesSidebar_SitesSidebarSites`, `routes[site-info]`, `stylesheets`
 - Filters: `siteInfoMoreMenu` (menu, site) — add items to a site's "More" menu, `appMenu`
 - Actions: `siteStarted`, `siteStopped`, `siteAdded`, `siteDeleted`, `siteCloned`, `changeSiteDomain`, `searchReplaceWPDatabase`
 - Navigation: `context.events.send('goToRoute', '/site-info/${site.id}/...')`
 
 ### `site` object (common hook parameter)
+
 `{ id, name, path, domain, phpVersion, mysqlVersion, webServer, multiSite, mysql: {database, user, password}, ports: {HTTP, HTTPS, MYSQL}, ... }`
 
 ## Context API highlights
+
 - `context.hooks` — the Hooks API
 - `context.electron` — dialogs, safeStorage, windows
 - `context.environment` — `appPath`, `userHome`, `userDataPath`, `version`
@@ -148,12 +155,15 @@ osascript -e 'quit app "Local"' && sleep 3 && open -a "Local"
 ## UI Components
 
 ### Kinsta Icons
+
 Two versions of the official Kinsta icon are embedded as React components:
+
 - `KinstaIconLight` — light/beige background (#F9F5F3) — for dark theme
 - `KinstaIconDark` — dark background (#181516) — for light theme
 - `KinstaIcon` — theme-aware wrapper that auto-selects based on Local's theme
 
 ### Local Components Used
+
 - `PrimaryButton`, `TextButton` — action buttons
 - `FlyModal` — confirmation dialogs only (push to production)
 - `InputSearch` — search input with icon
@@ -166,6 +176,7 @@ Two versions of the official Kinsta icon are embedded as React components:
 ## Data Storage
 
 Config stored in `<userDataPath>/addons-data/kinsta-sync/` (from `context.environment.userDataPath`; legacy `~/.kinsta-sync/` is auto-migrated on first run):
+
 - `config.json` — Company ID
 - `.api-key.enc` — Encrypted API key
 - `sites.json` — Site links (Local site ID → Kinsta site, not environment) + `lastPullAt`/`lastPushAt` timestamps
@@ -176,6 +187,7 @@ Config stored in `<userDataPath>/addons-data/kinsta-sync/` (from `context.enviro
 Sites are linked at the Kinsta site level (not environment level). When syncing, users select the target environment (Production or Staging) from a dropdown. This allows syncing to different environments without relinking.
 
 The link drawer includes:
+
 - Search functionality for sites (important for accounts with many sites)
 - Alphabetical sorting
 - Kinsta icons for each site
@@ -183,6 +195,7 @@ The link drawer includes:
 ## Sync Process
 
 ### Pull
+
 1. Pre-flight: site running? (socket check)
 2. rsync files from Kinsta (excluding system files, real progress)
 3. Backup local DB to tmp (safety net)
@@ -193,6 +206,7 @@ The link drawer includes:
 8. Cleanup temp files (pre-pull backup is kept until next pull)
 
 ### Push
+
 1. Confirmation modal for production pushes
 2. Pre-flight: site running? (socket check)
 3. Backup remote DB to `~/kinsta-sync-pre-push-backup.sql` on Kinsta
@@ -219,7 +233,7 @@ The link drawer includes:
 - **macOS rsync is not GNU rsync**: newer macOS ships openrsync (`/usr/bin/rsync`), older ships rsync 2.6.9 — neither supports `--info=progress2`. `resolveRsync()` capability-probes flags (`rsync <flag> --version`, exit 0 = supported) and prefers Homebrew rsync when installed. openrsync gets `--progress` but emits no `to-check=` lines, so live file-% is unavailable — stage progress still advances. `brew install rsync` gives full live progress.
 
 - **Preferences Apply button can't be hidden via the API**: every add-on settings section gets Local's Apply footer (`AddonSettingsItem` has no `noApply`, though Local's own "Connected accounts" page uses an internal `noApply` flag). The wrapper does pass an undocumented `setApplyButtonDisabled(bool)` prop for dirty-state forms. We replicate `noApply` in `KinstaSettings` by injecting `[class*="SettingsPane_Footer"] { display: none; }` while mounted (removed on unmount; substring match survives CSS Modules hash changes).
-- **FlyModal fullscreen gotchas**: (1) `overlayClassName` REPLACES FlyModal's overlay class (you lose the fixed backdrop/centering/z-index) — only pass `className`, which is *appended* to their `.FlyModal` content class. (2) FlyModal styles its direct child div via `.FlyModal > div { max-height: 93vh; padding: 60px; overflow-y: auto }` — must be overridden (`!important`) for fullscreen layouts.
+- **FlyModal fullscreen gotchas**: (1) `overlayClassName` REPLACES FlyModal's overlay class (you lose the fixed backdrop/centering/z-index) — only pass `className`, which is _appended_ to their `.FlyModal` content class. (2) FlyModal styles its direct child div via `.FlyModal > div { max-height: 93vh; padding: 60px; overflow-y: auto }` — must be overridden (`!important`) for fullscreen layouts.
 - **VirtualTable `cellRenderer`**: returning `false` renders an EMPTY cell — the docs comment says "false to bypass and use default" but the code does `null != r ? r : children`. Return `null`/`undefined`/`args.children` for the default rendering (first-party code returns `null`).
 - `Button` component from local-components with `privateOptions` causes React error #130
 - `FlySelect` with `optionsLoader` doesn't work reliably — use static `options` instead

@@ -26,7 +26,9 @@ const KinstaSettings: React.FC = () => {
     const style = document.createElement('style');
     style.textContent = '[class*="SettingsPane_Footer"] { display: none; }';
     document.head.appendChild(style);
-    return () => { document.head.removeChild(style); };
+    return () => {
+      document.head.removeChild(style);
+    };
   }, []);
 
   const loadConfig = async () => {
@@ -132,32 +134,52 @@ const KinstaSettings: React.FC = () => {
     <div style={containerStyle}>
       <h2 style={{ marginBottom: '20px' }}>Kinsta Sync</h2>
 
-      <div style={{
-        padding: '10px 15px',
-        backgroundColor: isConnected ? 'rgba(81, 207, 102, 0.2)' : 'rgba(255,255,255,0.1)',
-        borderRadius: '4px',
-        marginBottom: '20px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-      }}>
-        <span style={{
-          width: '10px',
-          height: '10px',
-          borderRadius: '50%',
-          backgroundColor: isConnected ? '#51cf66' : '#666',
-        }} />
+      <div
+        style={{
+          padding: '10px 15px',
+          backgroundColor: isConnected ? 'rgba(81, 207, 102, 0.2)' : 'rgba(255,255,255,0.1)',
+          borderRadius: '4px',
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+        }}
+      >
+        <span
+          style={{
+            width: '10px',
+            height: '10px',
+            borderRadius: '50%',
+            backgroundColor: isConnected ? '#51cf66' : '#666',
+          }}
+        />
         {isConnected ? 'Connected to Kinsta' : 'Not connected'}
       </div>
 
       {error && (
-        <div style={{ padding: '10px', backgroundColor: 'rgba(255,107,107,0.2)', borderRadius: '4px', marginBottom: '15px', color: '#ff6b6b' }}>
+        <div
+          style={{
+            padding: '10px',
+            backgroundColor: 'rgba(255,107,107,0.2)',
+            borderRadius: '4px',
+            marginBottom: '15px',
+            color: '#ff6b6b',
+          }}
+        >
           {error}
         </div>
       )}
 
       {success && (
-        <div style={{ padding: '10px', backgroundColor: 'rgba(81,207,102,0.2)', borderRadius: '4px', marginBottom: '15px', color: '#51cf66' }}>
+        <div
+          style={{
+            padding: '10px',
+            backgroundColor: 'rgba(81,207,102,0.2)',
+            borderRadius: '4px',
+            marginBottom: '15px',
+            color: '#51cf66',
+          }}
+        >
           {success}
         </div>
       )}
@@ -174,7 +196,16 @@ const KinstaSettings: React.FC = () => {
               placeholder="Enter your Kinsta API key"
             />
             <small style={{ color: '#888' }}>
-              Create at <a href="https://my.kinsta.com/account/api-keys" target="_blank" rel="noopener noreferrer" style={{ color: '#51cf66' }}>MyKinsta</a> — consider setting an expiry and rotating it yearly
+              Create at{' '}
+              <a
+                href="https://my.kinsta.com/account/api-keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: '#51cf66' }}
+              >
+                MyKinsta
+              </a>{' '}
+              — consider setting an expiry and rotating it yearly
             </small>
           </div>
 
@@ -188,7 +219,8 @@ const KinstaSettings: React.FC = () => {
               placeholder="e.g. abc123def456"
             />
             <small style={{ color: '#888' }}>
-              Found in your MyKinsta URL (?idCompany=...) or under Company settings → Billing details
+              Found in your MyKinsta URL (?idCompany=...) or under Company settings → Billing
+              details
             </small>
           </div>
 
@@ -199,22 +231,35 @@ const KinstaSettings: React.FC = () => {
       ) : (
         <>
           {/* Read-only account info — not a form */}
-          <div style={{
-            backgroundColor: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: '8px',
-            padding: '4px 16px',
-            marginBottom: '24px',
-          }}>
+          <div
+            style={{
+              backgroundColor: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '8px',
+              padding: '4px 16px',
+              marginBottom: '24px',
+            }}
+          >
             <div style={infoRowStyle}>
               <span style={{ opacity: 0.6 }}>API key</span>
               {/* Constant mask — never render the apiKey state here (it briefly holds the raw key during connect) */}
-              <span style={{ fontFamily: 'monospace', fontSize: '12px', opacity: 0.8, letterSpacing: '2px' }}>{'••••••••••••••••'}</span>
+              <span
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: '12px',
+                  opacity: 0.8,
+                  letterSpacing: '2px',
+                }}
+              >
+                {'••••••••••••••••'}
+              </span>
             </div>
             <div style={{ ...infoRowStyle, borderBottom: 'none' }}>
               <span style={{ opacity: 0.6 }}>Company ID</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontFamily: 'monospace', fontSize: '12px', opacity: 0.8 }}>{companyId}</span>
+                <span style={{ fontFamily: 'monospace', fontSize: '12px', opacity: 0.8 }}>
+                  {companyId}
+                </span>
                 <button style={subtleButtonStyle} onClick={handleCopyId}>
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
@@ -228,18 +273,26 @@ const KinstaSettings: React.FC = () => {
 
           {!confirmDisconnect ? (
             <button
-              style={{ ...subtleButtonStyle, borderColor: 'rgba(255, 107, 107, 0.5)', color: '#ff6b6b', padding: '8px 16px', fontSize: '13px' }}
+              style={{
+                ...subtleButtonStyle,
+                borderColor: 'rgba(255, 107, 107, 0.5)',
+                color: '#ff6b6b',
+                padding: '8px 16px',
+                fontSize: '13px',
+              }}
               onClick={() => setConfirmDisconnect(true)}
             >
               Disconnect from Kinsta...
             </button>
           ) : (
-            <div style={{
-              padding: '16px',
-              backgroundColor: 'rgba(255, 107, 107, 0.08)',
-              border: '1px solid rgba(255, 107, 107, 0.3)',
-              borderRadius: '8px',
-            }}>
+            <div
+              style={{
+                padding: '16px',
+                backgroundColor: 'rgba(255, 107, 107, 0.08)',
+                border: '1px solid rgba(255, 107, 107, 0.3)',
+                borderRadius: '8px',
+              }}
+            >
               <p style={{ fontSize: '13px', marginBottom: '6px' }}>
                 Disconnect from Kinsta? The API key will be deleted from this machine.
               </p>
@@ -248,7 +301,12 @@ const KinstaSettings: React.FC = () => {
               </p>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button
-                  style={{ ...buttonStyle, backgroundColor: '#ff6b6b', color: '#fff', marginRight: 0 }}
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: '#ff6b6b',
+                    color: '#fff',
+                    marginRight: 0,
+                  }}
                   onClick={handleDisconnect}
                 >
                   Yes, disconnect

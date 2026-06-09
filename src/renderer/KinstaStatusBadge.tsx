@@ -32,6 +32,7 @@ const KinstaStatusBadge: React.FC<Props> = ({ site, onOpen }) => {
   useEffect(() => {
     refresh();
     setSync(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh() only reads site.id; re-run on site change
   }, [site.id]);
 
   // Stay in sync with link/unlink from the page and drawers
@@ -42,6 +43,7 @@ const KinstaStatusBadge: React.FC<Props> = ({ site, onOpen }) => {
     };
     window.addEventListener('kinsta:state-changed', handler);
     return () => window.removeEventListener('kinsta:state-changed', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- subscribe once per site; handler reads the current site.id closure
   }, [site.id]);
 
   // Live sync progress (events carry siteId + mode from the main process)
@@ -59,6 +61,7 @@ const KinstaStatusBadge: React.FC<Props> = ({ site, onOpen }) => {
     return () => {
       ipcRenderer.removeListener('kinsta:syncProgress', handler);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- subscribe once per site; handler reads the current site.id closure
   }, [site.id]);
 
   if (!linked && !sync) return null;

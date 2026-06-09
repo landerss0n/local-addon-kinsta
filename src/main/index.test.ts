@@ -39,7 +39,14 @@ describe('injection guards (validators)', () => {
   });
 
   it('rejects shell metacharacters in hostnames', () => {
-    for (const bad of ['host;rm -rf /', 'host$(id)', 'host`id`', 'host name', '-oProxyCommand=evil', '']) {
+    for (const bad of [
+      'host;rm -rf /',
+      'host$(id)',
+      'host`id`',
+      'host name',
+      '-oProxyCommand=evil',
+      '',
+    ]) {
       expect(isValidHostname(bad)).toBe(false);
     }
   });
@@ -73,8 +80,10 @@ describe('injection guards (validators)', () => {
 describe('sshArgs', () => {
   it('builds args as an array (no shell string)', () => {
     expect(sshArgs(env(), 'wp db export /tmp/x.sql')).toEqual([
-      '-p', '12345',
-      '-o', 'StrictHostKeyChecking=accept-new',
+      '-p',
+      '12345',
+      '-o',
+      'StrictHostKeyChecking=accept-new',
       'gbdbutik@35.1.2.3',
       'wp db export /tmp/x.sql',
     ]);
@@ -116,9 +125,27 @@ describe('describePartialTransfer', () => {
 });
 
 describe('rsync progress', () => {
-  const gnu: RsyncInfo = { bin: 'rsync', supportsProgress2: true, supportsProgress: true, supportsItemizeChanges: true, supportsOutFormat: true };
-  const openrsync: RsyncInfo = { bin: '/usr/bin/rsync', supportsProgress2: false, supportsProgress: true, supportsItemizeChanges: false, supportsOutFormat: false };
-  const ancient: RsyncInfo = { bin: 'rsync', supportsProgress2: false, supportsProgress: false, supportsItemizeChanges: false, supportsOutFormat: false };
+  const gnu: RsyncInfo = {
+    bin: 'rsync',
+    supportsProgress2: true,
+    supportsProgress: true,
+    supportsItemizeChanges: true,
+    supportsOutFormat: true,
+  };
+  const openrsync: RsyncInfo = {
+    bin: '/usr/bin/rsync',
+    supportsProgress2: false,
+    supportsProgress: true,
+    supportsItemizeChanges: false,
+    supportsOutFormat: false,
+  };
+  const ancient: RsyncInfo = {
+    bin: 'rsync',
+    supportsProgress2: false,
+    supportsProgress: false,
+    supportsItemizeChanges: false,
+    supportsOutFormat: false,
+  };
 
   it('picks the best progress flag per rsync flavor', () => {
     expect(rsyncProgressArgs(gnu)).toEqual(['--info=progress2']);
@@ -154,8 +181,9 @@ describe('getDbCredentials', () => {
   const site = { id: 'x', path: '/x', domain: 'x.local' };
 
   it('uses the site mysql config when present', () => {
-    expect(getDbCredentials({ ...site, mysql: { database: 'db1', user: 'u1', password: 'p1' } }))
-      .toEqual({ database: 'db1', user: 'u1', password: 'p1' });
+    expect(
+      getDbCredentials({ ...site, mysql: { database: 'db1', user: 'u1', password: 'p1' } }),
+    ).toEqual({ database: 'db1', user: 'u1', password: 'p1' });
   });
 
   it("falls back to Local's defaults", () => {
@@ -177,14 +205,20 @@ describe('parseItemizeLine (push preview diff, %i|%l|%M|%n format)', () => {
   it('classifies a brand new file as add with mtime from %M', () => {
     const row = parseItemizeLine('<f+++++++++|1234|2026/06/05-12:30:00|wp-content/themes/x/a.php');
     expect(row).toMatchObject({
-      path: 'wp-content/themes/x/a.php', op: 'add', isDir: false, sizeBytes: 1234,
+      path: 'wp-content/themes/x/a.php',
+      op: 'add',
+      isDir: false,
+      sizeBytes: 1234,
     });
     expect(row?.localMtime).toBe(new Date('2026/06/05 12:30:00').getTime());
   });
 
   it('classifies a changed file as update', () => {
     expect(parseItemizeLine('<f.st......|987|2025/01/02-08:00:00|style.css')).toMatchObject({
-      path: 'style.css', op: 'update', isDir: false, sizeBytes: 987,
+      path: 'style.css',
+      op: 'update',
+      isDir: false,
+      sizeBytes: 987,
     });
     expect(parseItemizeLine('<fcst......|10|2025/01/02-08:00:00|x.js')?.op).toBe('update');
   });
@@ -192,16 +226,25 @@ describe('parseItemizeLine (push preview diff, %i|%l|%M|%n format)', () => {
   it('classifies a new directory as add + isDir with size 0 and no mtime', () => {
     const row = parseItemizeLine('cd+++++++++|0|2026/06/05-12:00:00|wp-content/uploads/2026/');
     expect(row).toEqual({
-      path: 'wp-content/uploads/2026', op: 'add', isDir: true, sizeBytes: 0,
+      path: 'wp-content/uploads/2026',
+      op: 'add',
+      isDir: true,
+      sizeBytes: 0,
     });
   });
 
   it('parses deletions in both output forms', () => {
     expect(parseItemizeLine('*deleting|0|2024/01/01-00:00:00|old/file.php')).toEqual({
-      path: 'old/file.php', op: 'delete', isDir: false, sizeBytes: 0,
+      path: 'old/file.php',
+      op: 'delete',
+      isDir: false,
+      sizeBytes: 0,
     });
     expect(parseItemizeLine('*deleting   old/dir/')).toEqual({
-      path: 'old/dir', op: 'delete', isDir: true, sizeBytes: 0,
+      path: 'old/dir',
+      op: 'delete',
+      isDir: true,
+      sizeBytes: 0,
     });
   });
 
@@ -215,7 +258,9 @@ describe('parseItemizeLine (push preview diff, %i|%l|%M|%n format)', () => {
   });
 
   it('keeps | characters inside filenames intact', () => {
-    expect(parseItemizeLine('<f+++++++++|5|2025/01/01-00:00:00|weird|name.txt')?.path).toBe('weird|name.txt');
+    expect(parseItemizeLine('<f+++++++++|5|2025/01/01-00:00:00|weird|name.txt')?.path).toBe(
+      'weird|name.txt',
+    );
   });
 
   it('survives an unparseable %M field', () => {
@@ -262,7 +307,9 @@ describe('safeRemoteRelPath (remote rm quoting)', () => {
   it('accepts normal relative paths, including spaces and åäö', () => {
     expect(safeRemoteRelPath('wp-content/themes/x/a.php')).toBe("'wp-content/themes/x/a.php'");
     expect(safeRemoteRelPath('dir with space/f.txt')).toBe("'dir with space/f.txt'");
-    expect(safeRemoteRelPath('uploads/2019/Planetväxel.jpg')).toBe("'uploads/2019/Planetväxel.jpg'");
+    expect(safeRemoteRelPath('uploads/2019/Planetväxel.jpg')).toBe(
+      "'uploads/2019/Planetväxel.jpg'",
+    );
   });
 
   it('rejects traversal, absolute paths and shell metacharacters', () => {
@@ -290,8 +337,11 @@ describe('safeRemoteRelPath (remote rm quoting)', () => {
 
 describe('buildPushRsyncArgs', () => {
   const rsync: RsyncInfo = {
-    bin: 'rsync', supportsProgress2: true, supportsProgress: true,
-    supportsItemizeChanges: true, supportsOutFormat: true,
+    bin: 'rsync',
+    supportsProgress2: true,
+    supportsProgress: true,
+    supportsItemizeChanges: true,
+    supportsOutFormat: true,
   };
   const base = {
     rsync,
@@ -326,12 +376,18 @@ describe('buildPushRsyncArgs', () => {
 
 describe('EXCLUDE_PATTERNS', () => {
   it('protects host-specific and dangerous files', () => {
-    for (const required of ['wp-config.php', '.htaccess', '*.sql', 'node_modules/', 'wp-content/mu-plugins/kinsta-mu-plugins/']) {
+    for (const required of [
+      'wp-config.php',
+      '.htaccess',
+      '*.sql',
+      'node_modules/',
+      'wp-content/mu-plugins/kinsta-mu-plugins/',
+    ]) {
       expect(EXCLUDE_PATTERNS).toContain(required);
     }
   });
 
   it('does NOT exclude uploads (that is a per-sync option)', () => {
-    expect(EXCLUDE_PATTERNS.some(p => p.includes('uploads'))).toBe(false);
+    expect(EXCLUDE_PATTERNS.some((p) => p.includes('uploads'))).toBe(false);
   });
 });

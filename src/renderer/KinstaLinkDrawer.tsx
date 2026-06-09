@@ -12,47 +12,108 @@ const { ipcRenderer } = window.require('electron');
 
 // Kinsta icon - dark background version (for dark theme)
 const KinstaIconDark = ({ size = 40 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 120 120"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
     <g clipPath="url(#clip0_dark)">
-      <path d="M0 24C0 10.7452 10.7452 0 24 0H96C109.254 0 120 10.7452 120 24V96C120 109.254 109.254 120 96 120H24C10.7452 120 0 109.254 0 96V24Z" fill="#181516"/>
-      <mask id="mask0_dark" style={{ maskType: 'luminance' }} maskUnits="userSpaceOnUse" x="4" y="26" width="45" height="68">
-        <path d="M38.3632 26.0246C44.0636 26.0246 48.6843 30.6453 48.6843 36.3456V83.6548C48.6843 89.3551 44.0636 93.9755 38.3632 93.9755C27.2161 93.9755 16.069 93.9755 4.92188 93.9755V26.0252C16.069 26.0237 27.2161 26.0246 38.3632 26.0246Z" fill="white"/>
+      <path
+        d="M0 24C0 10.7452 10.7452 0 24 0H96C109.254 0 120 10.7452 120 24V96C120 109.254 109.254 120 96 120H24C10.7452 120 0 109.254 0 96V24Z"
+        fill="#181516"
+      />
+      <mask
+        id="mask0_dark"
+        style={{ maskType: 'luminance' }}
+        maskUnits="userSpaceOnUse"
+        x="4"
+        y="26"
+        width="45"
+        height="68"
+      >
+        <path
+          d="M38.3632 26.0246C44.0636 26.0246 48.6843 30.6453 48.6843 36.3456V83.6548C48.6843 89.3551 44.0636 93.9755 38.3632 93.9755C27.2161 93.9755 16.069 93.9755 4.92188 93.9755V26.0252C16.069 26.0237 27.2161 26.0246 38.3632 26.0246Z"
+          fill="white"
+        />
       </mask>
       <g mask="url(#mask0_dark)">
         <g filter="url(#filter0_dark)">
-          <path d="M30.4688 9.84363H147.721V110.279H30.4688V9.84363Z" fill="url(#paint0_dark)"/>
+          <path d="M30.4688 9.84363H147.721V110.279H30.4688V9.84363Z" fill="url(#paint0_dark)" />
         </g>
       </g>
-      <mask id="mask1_dark" style={{ maskType: 'luminance' }} maskUnits="userSpaceOnUse" x="48" y="26" width="48" height="68">
-        <path d="M85.3079 26.0252C91.0083 26.0252 95.629 30.646 95.629 36.3463V83.6554C95.629 89.3557 91.0083 93.9762 85.3079 93.9762L48.8301 93.9844L48.8301 26.0156L85.3079 26.0252Z" fill="white"/>
+      <mask
+        id="mask1_dark"
+        style={{ maskType: 'luminance' }}
+        maskUnits="userSpaceOnUse"
+        x="48"
+        y="26"
+        width="48"
+        height="68"
+      >
+        <path
+          d="M85.3079 26.0252C91.0083 26.0252 95.629 30.646 95.629 36.3463V83.6554C95.629 89.3557 91.0083 93.9762 85.3079 93.9762L48.8301 93.9844L48.8301 26.0156L85.3079 26.0252Z"
+          fill="white"
+        />
       </mask>
       <g mask="url(#mask1_dark)">
         <g filter="url(#filter1_dark)">
-          <path d="M60 9.84375H177.252V110.279H60V9.84375Z" fill="url(#paint1_dark)"/>
+          <path d="M60 9.84375H177.252V110.279H60V9.84375Z" fill="url(#paint1_dark)" />
         </g>
       </g>
     </g>
     <defs>
-      <filter id="filter0_dark" x="-69.5312" y="-90.1564" width="317.252" height="300.435" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
-        <feFlood floodOpacity="0" result="BackgroundImageFix"/>
-        <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
-        <feGaussianBlur stdDeviation="4.6875" result="effect1_foregroundBlur"/>
+      <filter
+        id="filter0_dark"
+        x="-69.5312"
+        y="-90.1564"
+        width="317.252"
+        height="300.435"
+        filterUnits="userSpaceOnUse"
+        colorInterpolationFilters="sRGB"
+      >
+        <feFlood floodOpacity="0" result="BackgroundImageFix" />
+        <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
+        <feGaussianBlur stdDeviation="4.6875" result="effect1_foregroundBlur" />
       </filter>
-      <filter id="filter1_dark" x="-40" y="-90.1562" width="317.252" height="300.435" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
-        <feFlood floodOpacity="0" result="BackgroundImageFix"/>
-        <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
-        <feGaussianBlur stdDeviation="4.6875" result="effect1_foregroundBlur"/>
+      <filter
+        id="filter1_dark"
+        x="-40"
+        y="-90.1562"
+        width="317.252"
+        height="300.435"
+        filterUnits="userSpaceOnUse"
+        colorInterpolationFilters="sRGB"
+      >
+        <feFlood floodOpacity="0" result="BackgroundImageFix" />
+        <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
+        <feGaussianBlur stdDeviation="4.6875" result="effect1_foregroundBlur" />
       </filter>
-      <linearGradient id="paint0_dark" x1="26.8484" y1="69.0531" x2="106.313" y2="43.7697" gradientUnits="userSpaceOnUse">
-        <stop offset="0.182692" stopColor="#FE5A00"/>
-        <stop offset="0.598914" stopColor="#FF0000"/>
+      <linearGradient
+        id="paint0_dark"
+        x1="26.8484"
+        y1="69.0531"
+        x2="106.313"
+        y2="43.7697"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0.182692" stopColor="#FE5A00" />
+        <stop offset="0.598914" stopColor="#FF0000" />
       </linearGradient>
-      <linearGradient id="paint1_dark" x1="56.3797" y1="69.0532" x2="135.844" y2="43.7698" gradientUnits="userSpaceOnUse">
-        <stop offset="0.211538" stopColor="#FE5A00"/>
-        <stop offset="0.634615" stopColor="#FF0000"/>
+      <linearGradient
+        id="paint1_dark"
+        x1="56.3797"
+        y1="69.0532"
+        x2="135.844"
+        y2="43.7698"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0.211538" stopColor="#FE5A00" />
+        <stop offset="0.634615" stopColor="#FF0000" />
       </linearGradient>
       <clipPath id="clip0_dark">
-        <rect width="120" height="120" fill="white"/>
+        <rect width="120" height="120" fill="white" />
       </clipPath>
     </defs>
   </svg>
@@ -60,47 +121,108 @@ const KinstaIconDark = ({ size = 40 }: { size?: number }) => (
 
 // Kinsta icon - light background version (for light theme)
 const KinstaIconLight = ({ size = 40 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 120 120"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
     <g clipPath="url(#clip0_light)">
-      <path d="M0 24C0 10.7452 10.7452 0 24 0H96C109.254 0 120 10.7452 120 24V96C120 109.254 109.254 120 96 120H24C10.7452 120 0 109.254 0 96V24Z" fill="#F9F5F3"/>
-      <mask id="mask0_light" style={{ maskType: 'luminance' }} maskUnits="userSpaceOnUse" x="4" y="26" width="45" height="68">
-        <path d="M38.3632 26.0246C44.0636 26.0246 48.6843 30.6453 48.6843 36.3456V83.6548C48.6843 89.3551 44.0636 93.9755 38.3632 93.9755C27.2161 93.9755 16.069 93.9755 4.92188 93.9755V26.0252C16.069 26.0237 27.2161 26.0246 38.3632 26.0246Z" fill="white"/>
+      <path
+        d="M0 24C0 10.7452 10.7452 0 24 0H96C109.254 0 120 10.7452 120 24V96C120 109.254 109.254 120 96 120H24C10.7452 120 0 109.254 0 96V24Z"
+        fill="#F9F5F3"
+      />
+      <mask
+        id="mask0_light"
+        style={{ maskType: 'luminance' }}
+        maskUnits="userSpaceOnUse"
+        x="4"
+        y="26"
+        width="45"
+        height="68"
+      >
+        <path
+          d="M38.3632 26.0246C44.0636 26.0246 48.6843 30.6453 48.6843 36.3456V83.6548C48.6843 89.3551 44.0636 93.9755 38.3632 93.9755C27.2161 93.9755 16.069 93.9755 4.92188 93.9755V26.0252C16.069 26.0237 27.2161 26.0246 38.3632 26.0246Z"
+          fill="white"
+        />
       </mask>
       <g mask="url(#mask0_light)">
         <g filter="url(#filter0_light)">
-          <path d="M30.4688 9.84363H147.721V110.279H30.4688V9.84363Z" fill="url(#paint0_light)"/>
+          <path d="M30.4688 9.84363H147.721V110.279H30.4688V9.84363Z" fill="url(#paint0_light)" />
         </g>
       </g>
-      <mask id="mask1_light" style={{ maskType: 'luminance' }} maskUnits="userSpaceOnUse" x="48" y="26" width="48" height="68">
-        <path d="M85.3079 26.0252C91.0083 26.0252 95.629 30.646 95.629 36.3463V83.6554C95.629 89.3557 91.0083 93.9762 85.3079 93.9762L48.8301 93.9844L48.8301 26.0156L85.3079 26.0252Z" fill="white"/>
+      <mask
+        id="mask1_light"
+        style={{ maskType: 'luminance' }}
+        maskUnits="userSpaceOnUse"
+        x="48"
+        y="26"
+        width="48"
+        height="68"
+      >
+        <path
+          d="M85.3079 26.0252C91.0083 26.0252 95.629 30.646 95.629 36.3463V83.6554C95.629 89.3557 91.0083 93.9762 85.3079 93.9762L48.8301 93.9844L48.8301 26.0156L85.3079 26.0252Z"
+          fill="white"
+        />
       </mask>
       <g mask="url(#mask1_light)">
         <g filter="url(#filter1_light)">
-          <path d="M60 9.84375H177.252V110.279H60V9.84375Z" fill="url(#paint1_light)"/>
+          <path d="M60 9.84375H177.252V110.279H60V9.84375Z" fill="url(#paint1_light)" />
         </g>
       </g>
     </g>
     <defs>
-      <filter id="filter0_light" x="-69.5312" y="-90.1564" width="317.252" height="300.435" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
-        <feFlood floodOpacity="0" result="BackgroundImageFix"/>
-        <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
-        <feGaussianBlur stdDeviation="4.6875" result="effect1_foregroundBlur"/>
+      <filter
+        id="filter0_light"
+        x="-69.5312"
+        y="-90.1564"
+        width="317.252"
+        height="300.435"
+        filterUnits="userSpaceOnUse"
+        colorInterpolationFilters="sRGB"
+      >
+        <feFlood floodOpacity="0" result="BackgroundImageFix" />
+        <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
+        <feGaussianBlur stdDeviation="4.6875" result="effect1_foregroundBlur" />
       </filter>
-      <filter id="filter1_light" x="-40" y="-90.1562" width="317.252" height="300.435" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
-        <feFlood floodOpacity="0" result="BackgroundImageFix"/>
-        <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
-        <feGaussianBlur stdDeviation="4.6875" result="effect1_foregroundBlur"/>
+      <filter
+        id="filter1_light"
+        x="-40"
+        y="-90.1562"
+        width="317.252"
+        height="300.435"
+        filterUnits="userSpaceOnUse"
+        colorInterpolationFilters="sRGB"
+      >
+        <feFlood floodOpacity="0" result="BackgroundImageFix" />
+        <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
+        <feGaussianBlur stdDeviation="4.6875" result="effect1_foregroundBlur" />
       </filter>
-      <linearGradient id="paint0_light" x1="26.8484" y1="69.0531" x2="106.313" y2="43.7697" gradientUnits="userSpaceOnUse">
-        <stop offset="0.182692" stopColor="#FE5A00"/>
-        <stop offset="0.598914" stopColor="#FF0000"/>
+      <linearGradient
+        id="paint0_light"
+        x1="26.8484"
+        y1="69.0531"
+        x2="106.313"
+        y2="43.7697"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0.182692" stopColor="#FE5A00" />
+        <stop offset="0.598914" stopColor="#FF0000" />
       </linearGradient>
-      <linearGradient id="paint1_light" x1="56.3797" y1="69.0532" x2="135.844" y2="43.7698" gradientUnits="userSpaceOnUse">
-        <stop offset="0.211538" stopColor="#FE5A00"/>
-        <stop offset="0.634615" stopColor="#FF0000"/>
+      <linearGradient
+        id="paint1_light"
+        x1="56.3797"
+        y1="69.0532"
+        x2="135.844"
+        y2="43.7698"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0.211538" stopColor="#FE5A00" />
+        <stop offset="0.634615" stopColor="#FF0000" />
       </linearGradient>
       <clipPath id="clip0_light">
-        <rect width="120" height="120" fill="white"/>
+        <rect width="120" height="120" fill="white" />
       </clipPath>
     </defs>
   </svg>
@@ -109,10 +231,12 @@ const KinstaIconLight = ({ size = 40 }: { size?: number }) => (
 // Theme-aware icon component
 const KinstaIcon = ({ size = 40 }: { size?: number }) => {
   // Check if dark mode by looking at body background or a known class
-  const isDarkMode = typeof document !== 'undefined' &&
+  const isDarkMode =
+    typeof document !== 'undefined' &&
     (document.body.classList.contains('theme-dark') ||
-     getComputedStyle(document.body).backgroundColor.includes('rgb(') &&
-     parseInt(getComputedStyle(document.body).backgroundColor.split(',')[0].replace(/\D/g, '')) < 128);
+      (getComputedStyle(document.body).backgroundColor.includes('rgb(') &&
+        parseInt(getComputedStyle(document.body).backgroundColor.split(',')[0].replace(/\D/g, '')) <
+          128));
 
   // Dark theme = Light icon (beige/cream background), Light theme = Dark icon (black background)
   return isDarkMode !== false ? <KinstaIconLight size={size} /> : <KinstaIconDark size={size} />;
@@ -141,7 +265,14 @@ interface Props {
   isConnected: boolean;
 }
 
-const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, onStartPull, site, isConnected }) => {
+const KinstaLinkDrawer: React.FC<Props> = ({
+  isOpen,
+  onClose,
+  onLinkComplete,
+  onStartPull,
+  site,
+  isConnected,
+}) => {
   const [apiKey, setApiKey] = useState('');
   const [companyId, setCompanyId] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
@@ -207,9 +338,10 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, on
     // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      sites = sites.filter(s =>
-        (s.display_name || s.name).toLowerCase().includes(query) ||
-        s.name.toLowerCase().includes(query)
+      sites = sites.filter(
+        (s) =>
+          (s.display_name || s.name).toLowerCase().includes(query) ||
+          s.name.toLowerCase().includes(query),
       );
     }
 
@@ -251,7 +383,7 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, on
     setIsLinking(true);
     setError(null);
 
-    const kinstaSite = kinstaSites.find(s => s.id === selectedSiteId);
+    const kinstaSite = kinstaSites.find((s) => s.id === selectedSiteId);
     const result = await ipcRenderer.invoke('kinsta:linkSite', site.id, kinstaSite);
 
     if (result.success) {
@@ -354,7 +486,14 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, on
               padding: '8px',
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#888"
+              strokeWidth="2"
+            >
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
@@ -364,25 +503,38 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, on
         <div style={contentStyle}>
           {linkedSite ? (
             /* Success state — mirrors the sync drawer's complete view */
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              textAlign: 'center',
-            }}>
-              <div style={{
-                width: '80px',
-                height: '80px',
-                borderRadius: '50%',
-                backgroundColor: 'rgba(80, 192, 131, 0.15)',
+            <div
+              style={{
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: '24px',
-              }}>
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#50c083" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                height: '100%',
+                textAlign: 'center',
+              }}
+            >
+              <div
+                style={{
+                  width: '80px',
+                  height: '80px',
+                  borderRadius: '50%',
+                  backgroundColor: 'rgba(80, 192, 131, 0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: '24px',
+                }}
+              >
+                <svg
+                  width="40"
+                  height="40"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#50c083"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               </div>
@@ -394,7 +546,8 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, on
                 <strong>{linkedSite.kinstaSiteName}</strong>.
               </span>
               <span style={{ opacity: 0.5, fontSize: '13px' }}>
-                Pull to fetch files and database from Kinsta, or find all actions in the site's More menu.
+                Pull to fetch files and database from Kinsta, or find all actions in the site's More
+                menu.
               </span>
             </div>
           ) : !connected ? (
@@ -409,7 +562,8 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, on
                   style={{ color: '#51cf66' }}
                 >
                   MyKinsta dashboard
-                </a>.
+                </a>
+                .
               </p>
 
               <div>
@@ -441,31 +595,36 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, on
             <>
               {/* Link Form */}
               <p style={{ color: '#888', fontSize: '14px', marginBottom: '16px', lineHeight: 1.5 }}>
-                Select the Kinsta site to link with <strong style={{ color: '#fff' }}>{site.name}</strong>.
+                Select the Kinsta site to link with{' '}
+                <strong style={{ color: '#fff' }}>{site.name}</strong>.
               </p>
 
               <div>
                 {isLoadingSites ? (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    padding: '16px',
-                    backgroundColor: '#1e1e1e',
-                    border: '1px solid #3e3e3e',
-                    borderRadius: '4px',
-                  }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: '16px',
+                      backgroundColor: '#1e1e1e',
+                      border: '1px solid #3e3e3e',
+                      borderRadius: '4px',
+                    }}
+                  >
                     <Spinner />
                     <span style={{ color: '#888' }}>Loading Kinsta sites...</span>
                   </div>
                 ) : kinstaSites.length === 0 ? (
-                  <div style={{
-                    padding: '16px',
-                    backgroundColor: '#1e1e1e',
-                    border: '1px solid #3e3e3e',
-                    borderRadius: '4px',
-                    color: '#888',
-                  }}>
+                  <div
+                    style={{
+                      padding: '16px',
+                      backgroundColor: '#1e1e1e',
+                      border: '1px solid #3e3e3e',
+                      borderRadius: '4px',
+                      color: '#888',
+                    }}
+                  >
                     No sites found. Make sure your API key has access to sites.
                   </div>
                 ) : (
@@ -474,38 +633,46 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, on
                     <div ref={searchWrapRef} style={{ marginBottom: '12px' }}>
                       <InputSearch
                         value={searchQuery}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setSearchQuery(e.target.value)
+                        }
                         placeholder={`Search ${kinstaSites.length} sites...`}
                       />
                     </div>
 
                     {/* Sites count */}
-                    <div style={{
-                      fontSize: '12px',
-                      color: '#666',
-                      marginBottom: '8px',
-                      paddingLeft: '2px',
-                    }}>
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        color: '#666',
+                        marginBottom: '8px',
+                        paddingLeft: '2px',
+                      }}
+                    >
                       {filteredSites.length === kinstaSites.length
                         ? `${kinstaSites.length} sites`
                         : `${filteredSites.length} of ${kinstaSites.length} sites`}
                     </div>
 
                     {/* Sites list */}
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '6px',
-                      maxHeight: '400px',
-                      overflowY: 'auto',
-                    }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                        maxHeight: '400px',
+                        overflowY: 'auto',
+                      }}
+                    >
                       {filteredSites.length === 0 ? (
-                        <div style={{
-                          padding: '24px 16px',
-                          textAlign: 'center',
-                          color: '#666',
-                          fontSize: '14px',
-                        }}>
+                        <div
+                          style={{
+                            padding: '24px 16px',
+                            textAlign: 'center',
+                            color: '#666',
+                            fontSize: '14px',
+                          }}
+                        >
                           No sites match "{searchQuery}"
                         </div>
                       ) : (
@@ -518,8 +685,14 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, on
                               alignItems: 'center',
                               gap: '12px',
                               padding: '10px 12px',
-                              backgroundColor: selectedSiteId === kSite.id ? 'rgba(81, 207, 102, 0.15)' : '#1e1e1e',
-                              border: selectedSiteId === kSite.id ? '2px solid #51cf66' : '1px solid #3e3e3e',
+                              backgroundColor:
+                                selectedSiteId === kSite.id
+                                  ? 'rgba(81, 207, 102, 0.15)'
+                                  : '#1e1e1e',
+                              border:
+                                selectedSiteId === kSite.id
+                                  ? '2px solid #51cf66'
+                                  : '1px solid #3e3e3e',
                               borderRadius: '8px',
                               cursor: 'pointer',
                               textAlign: 'left',
@@ -539,36 +712,49 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, on
                               }
                             }}
                           >
-                            <div style={{
-                              width: '36px',
-                              height: '36px',
-                              borderRadius: '6px',
-                              overflow: 'hidden',
-                              flexShrink: 0,
-                            }}>
+                            <div
+                              style={{
+                                width: '36px',
+                                height: '36px',
+                                borderRadius: '6px',
+                                overflow: 'hidden',
+                                flexShrink: 0,
+                              }}
+                            >
                               <KinstaIcon size={36} />
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{
-                                color: selectedSiteId === kSite.id ? '#fff' : '#ccc',
-                                fontSize: '14px',
-                                fontWeight: 500,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}>
+                              <div
+                                style={{
+                                  color: selectedSiteId === kSite.id ? '#fff' : '#ccc',
+                                  fontSize: '14px',
+                                  fontWeight: 500,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
                                 {kSite.display_name || kSite.name}
                               </div>
-                              <div style={{
-                                color: '#666',
-                                fontSize: '12px',
-                                marginTop: '1px',
-                              }}>
+                              <div
+                                style={{
+                                  color: '#666',
+                                  fontSize: '12px',
+                                  marginTop: '1px',
+                                }}
+                              >
                                 {kSite.name}
                               </div>
                             </div>
                             {selectedSiteId === kSite.id && (
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#51cf66" strokeWidth="2.5">
+                              <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="#51cf66"
+                                strokeWidth="2.5"
+                              >
                                 <polyline points="20 6 9 17 4 12" />
                               </svg>
                             )}
@@ -583,15 +769,17 @@ const KinstaLinkDrawer: React.FC<Props> = ({ isOpen, onClose, onLinkComplete, on
           )}
 
           {error && (
-            <div style={{
-              marginTop: '16px',
-              padding: '12px 16px',
-              backgroundColor: 'rgba(208, 77, 92, 0.1)',
-              border: '1px solid rgba(208, 77, 92, 0.3)',
-              borderRadius: '8px',
-              color: '#d04d5c',
-              fontSize: '13px',
-            }}>
+            <div
+              style={{
+                marginTop: '16px',
+                padding: '12px 16px',
+                backgroundColor: 'rgba(208, 77, 92, 0.1)',
+                border: '1px solid rgba(208, 77, 92, 0.3)',
+                borderRadius: '8px',
+                color: '#d04d5c',
+                fontSize: '13px',
+              }}
+            >
               {error}
             </div>
           )}
