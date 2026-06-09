@@ -5,6 +5,14 @@
   "description": "Sync WordPress sites between Local and Kinsta hosting",
   "author": "Lucas",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/landerss0n/local-addon-kinsta.git"
+  },
+  "bugs": {
+    "url": "https://github.com/landerss0n/local-addon-kinsta/issues"
+  },
+  "homepage": "https://github.com/landerss0n/local-addon-kinsta#readme",
   "keywords": [
     "local-addon"
   ],
