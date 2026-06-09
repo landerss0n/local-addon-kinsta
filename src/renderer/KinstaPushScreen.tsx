@@ -17,6 +17,12 @@ import {
   FileRightArrowIcon,
 } from '@getflywheel/local-components';
 import KinstaIcon from './KinstaIcon';
+import {
+  buildEnvInfo,
+  visibleDiffRows,
+  summarizeSelection,
+  buildPushFileSelection,
+} from './pushHelpers';
 
 const { ipcRenderer } = window.require('electron');
 
@@ -213,20 +219,11 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
     }
   };
 
-  const getEnvInfo = (envId: string): EnvironmentInfo | null => {
-    const env = environments.find((e) => e.id === envId);
-    if (!env || !siteLink) return null;
-    const siteName = siteLink.kinstaSiteSlug || siteLink.kinstaSiteName;
-    return {
-      envId: env.id,
-      envType: env.is_premium ? 'live' : 'staging',
-      sshHost: env.ssh_connection?.ssh_ip?.external_ip || '',
-      sshPort: String(env.ssh_connection?.ssh_port || '22'),
-      sshUser: siteName.toLowerCase().replace(/[^a-z0-9]/g, ''),
-      remoteDomain: env.primaryDomain?.name || env.domains?.[0]?.name || '',
-      cdnCacheId: env.cdn_cache_id,
-    };
-  };
+  const getEnvInfo = (envId: string): EnvironmentInfo | null =>
+    buildEnvInfo(
+      environments.find((e) => e.id === envId),
+      siteLink,
+    ) as EnvironmentInfo | null;
 
   // Re-run the dry-run preview whenever its inputs change (debounced)
   useEffect(() => {
@@ -248,8 +245,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
       setPreviewLoading(false);
       if (result.success) {
         setDegraded(!!result.degraded);
-        // Hide add/update directory rows (implied by their files); keep folder deletions
-        const visible = (result.rows || []).filter((r: DiffRow) => !(r.isDir && r.op !== 'delete'));
+        const visible = visibleDiffRows<DiffRow>(result.rows || []);
         setRows(visible.map((r: DiffRow) => ({ ...r, selected: true })));
       } else {
         setError(result.error || 'Preview failed');
@@ -263,14 +259,8 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
   }, [isOpen, selectedEnvId, mode, includeUploads, environments]);
 
   const selectedRows = rows.filter((r) => r.selected);
-  const addUpdateCount = selectedRows.filter((r) => r.op !== 'delete').length;
-  const deleteCount = selectedRows.filter((r) => r.op === 'delete').length;
-  const totalBytes = selectedRows.reduce(
-    (sum, r) => sum + (r.op === 'delete' ? 0 : r.sizeBytes),
-    0,
-  );
-  const allSelected = rows.length > 0 && rows.every((r) => r.selected);
-  const someSelected = rows.some((r) => r.selected);
+  const { addUpdateCount, deleteCount, totalBytes, allSelected, someSelected } =
+    summarizeSelection(rows);
 
   const env = environments.find((e) => e.id === selectedEnvId);
   const isLive = !!env?.is_premium;
@@ -302,14 +292,9 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
       includeUploads,
       kinstaBackup,
       mode,
-      // Full selection + "all modified" = the plain rsync --delete fast path
-      // allSelected requires rows.length > 0, so this never sends an empty diff
-      ...(allSelected && mode === 'all'
-        ? {}
-        : {
-            files: selectedRows.filter((r) => r.op !== 'delete').map((r) => r.path),
-            deletions: selectedRows.filter((r) => r.op === 'delete').map((r) => r.path),
-          }),
+      // Full selection + "all modified" = plain rsync --delete fast path ({});
+      // otherwise an explicit files/deletions list (selective, never blind-deletes)
+      ...buildPushFileSelection(rows, mode),
     });
 
     if (result.success) {
