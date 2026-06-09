@@ -382,6 +382,7 @@ describe('EXCLUDE_PATTERNS', () => {
       '*.sql',
       'node_modules/',
       'wp-content/mu-plugins/kinsta-mu-plugins/',
+      'local-xdebuginfo.php',
     ]) {
       expect(EXCLUDE_PATTERNS).toContain(required);
     }

@@ -85,6 +85,8 @@ export const EXCLUDE_PATTERNS = [
   '.user.ini',
   'wp-content/mu-plugins/kinsta-mu-plugins/',
   'wp-content/mu-plugins/kinsta-mu-plugins.php',
+  // Local-generated helper file in the webroot — never part of the WP site
+  'local-xdebuginfo.php',
 ];
 
 interface KinstaConfig {
