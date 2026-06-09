@@ -33,7 +33,7 @@ Both modules `export default function (context) {...}` — Local passes a `conte
 - **Automatic rollback**: if a sync is cancelled or fails after the DB import started (`dbImportStarted`/`remoteImportStarted` flags), the catch block restores the respective backup — a half-imported or half-search-replaced DB is unusable. Uses a fresh `ActiveSync` for the restore (the cancelled one rejects all commands). Pushed files (rsync --delete) cannot be rolled back — only the DB.
 - Pre-flight check: DB sync requires the local site running (MySQL socket exists) — fails fast with a clear message
 - DB credentials from `site.mysql.{database,user,password}` (fallback root/root/local); multisite adds `--network` to search-replace (`MultiSite.No` is the empty string — truthiness check)
-- Search-replace covers `https://`, `http://` and protocol-relative `//` URLs in both directions
+- Search-replace covers `https://`, `http://`, protocol-relative `//`, AND JSON-escaped `\/\/` URLs in both directions (the escaped pass catches URLs stored inside JSON — block attributes, plugin settings — that plain `//` would miss; one `\/\/domain` pass also covers `https:\/\/`/`http:\/\/`)
 - Stores API keys encrypted via `context.electron.safeStorage`
 - Desktop notifications via `context.notifier.notify()` on sync complete/fail
 - `siteDeleted` action hook removes stale site links
