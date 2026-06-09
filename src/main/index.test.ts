@@ -192,12 +192,21 @@ describe('getDbCredentials', () => {
 });
 
 describe('searchReplacePairs', () => {
-  it('covers https, http and protocol-relative URLs', () => {
+  it('covers https, http, protocol-relative, and JSON-escaped URLs', () => {
     expect(searchReplacePairs('gbdbutik.se', 'gbd-shop.local')).toEqual([
       ['https://gbdbutik.se', 'https://gbd-shop.local'],
       ['http://gbdbutik.se', 'http://gbd-shop.local'],
       ['//gbdbutik.se', '//gbd-shop.local'],
+      ['\\/\\/gbdbutik.se', '\\/\\/gbd-shop.local'],
     ]);
+  });
+
+  it('the escaped \\/\\/ pass is a substring of escaped http(s) URLs, so one pass covers all', () => {
+    const escapedFrom = searchReplacePairs('a.com', 'b.local')[3][0];
+    expect(escapedFrom).toBe('\\/\\/a.com');
+    // JSON-encoded URLs (e.g. block attributes, plugin settings) store slashes escaped
+    expect('https:\\/\\/a.com'.includes(escapedFrom)).toBe(true);
+    expect('http:\\/\\/a.com'.includes(escapedFrom)).toBe(true);
   });
 });
 

@@ -613,12 +613,20 @@ export function getDbCredentials(site: SiteInfo): {
   };
 }
 
-// WP-CLI search-replace passes covering https, http, and protocol-relative URLs
+// WP-CLI search-replace passes covering https, http, and protocol-relative URLs.
+// The final pass handles the JSON-escaped slash form (`\/\/domain`) that appears
+// when URLs are stored inside JSON — Gutenberg block attributes, plugin settings,
+// cached API payloads. wp search-replace matches literal substrings, so plain
+// `//domain` never matches `\/\/domain`; without this pass the source domain leaks
+// across every push/pull. One `\/\/domain` pass suffices because it is a substring
+// of `https:\/\/domain` and `http:\/\/domain` too (mirroring how `//domain` covers
+// the plain protocol forms).
 export function searchReplacePairs(fromDomain: string, toDomain: string): Array<[string, string]> {
   return [
     [`https://${fromDomain}`, `https://${toDomain}`],
     [`http://${fromDomain}`, `http://${toDomain}`],
     [`//${fromDomain}`, `//${toDomain}`],
+    [`\\/\\/${fromDomain}`, `\\/\\/${toDomain}`],
   ];
 }
 
