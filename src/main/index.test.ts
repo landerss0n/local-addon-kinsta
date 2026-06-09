@@ -12,6 +12,8 @@ import {
   makeRsyncProgressParser,
   getDbCredentials,
   searchReplacePairs,
+  isLikelyValidSqlDump,
+  isTransientApiError,
   EXCLUDE_PATTERNS,
   EnvironmentInfo,
   RsyncInfo,
@@ -380,6 +382,41 @@ describe('buildPushRsyncArgs', () => {
   it('always ends with -e ssh, source, destination', () => {
     const args = buildPushRsyncArgs({ ...base, mode: 'all' });
     expect(args.slice(-4)).toEqual(['-e', 'ssh -p 22', '/x/app/public/', 'u@h:~/public/']);
+  });
+});
+
+describe('isLikelyValidSqlDump', () => {
+  it('rejects empty/truncated dumps and accepts real ones', () => {
+    expect(isLikelyValidSqlDump(0)).toBe(false);
+    expect(isLikelyValidSqlDump(50)).toBe(false);
+    expect(isLikelyValidSqlDump(199)).toBe(false);
+    expect(isLikelyValidSqlDump(200)).toBe(true);
+    expect(isLikelyValidSqlDump(5_000_000)).toBe(true);
+  });
+  it('rejects non-finite sizes', () => {
+    expect(isLikelyValidSqlDump(NaN)).toBe(false);
+    expect(isLikelyValidSqlDump(Infinity)).toBe(false);
+  });
+});
+
+describe('isTransientApiError', () => {
+  it('treats network errors (no response) as transient', () => {
+    expect(isTransientApiError({ code: 'ECONNABORTED' })).toBe(true);
+    expect(isTransientApiError(new Error('socket hang up'))).toBe(true);
+  });
+  it('treats 5xx and 429 as transient', () => {
+    expect(isTransientApiError({ response: { status: 500 } })).toBe(true);
+    expect(isTransientApiError({ response: { status: 503 } })).toBe(true);
+    expect(isTransientApiError({ response: { status: 429 } })).toBe(true);
+  });
+  it('does NOT retry 4xx (auth, not-found, bad request)', () => {
+    expect(isTransientApiError({ response: { status: 401 } })).toBe(false);
+    expect(isTransientApiError({ response: { status: 404 } })).toBe(false);
+    expect(isTransientApiError({ response: { status: 400 } })).toBe(false);
+  });
+  it('handles null/undefined safely', () => {
+    expect(isTransientApiError(null)).toBe(false);
+    expect(isTransientApiError(undefined)).toBe(false);
   });
 });
 

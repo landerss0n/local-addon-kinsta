@@ -24,14 +24,14 @@ Both modules `export default function (context) {...}` — Local passes a `conte
 ### Main Process (`src/main/index.ts`)
 
 - Handles IPC communication with renderer
-- Manages Kinsta API calls (axios — `context.request` was removed in Local 8.0)
+- Manages Kinsta API calls (axios — `context.request` was removed in Local 8.0); `getKinstaClient` sets a 30s timeout and retries transient failures (network/timeout/5xx/429) twice with linear backoff via a response interceptor (`isTransientApiError`)
 - Runs rsync/SSH/mysql via **async `spawn` with arg arrays** (`runCommand` helper) — never `execSync` (blocks Local's main process) and never shell strings (injection surface). `child_process` is allowed per docs.
 - Real rsync progress via `--info=progress2` parsing; `mysqldump`/`mysql` stream via stdout/stdin file pipes
 - **Cancellable syncs**: one `ActiveSync` per site in `activeSyncs`; `kinsta:cancelSync` kills the current child; every step rejects with `CancelledError` after cancellation
-- **Safety backups before destructive steps**: pull backs up local DB to tmp (`<siteId>-pre-pull-backup.sql`), push exports remote DB to `~/kinsta-sync-pre-push-backup.sql` (home dir, outside `~/public`)
+- **Safety backups before destructive steps**: pull backs up local DB to tmp (`<siteId>-pre-pull-backup.sql`), push exports remote DB to `~/kinsta-sync-pre-push-backup.sql` (home dir, outside `~/public`). Each backup is size-checked (`isLikelyValidSqlDump`, ≥200 bytes) before the destructive import — a 0-byte/truncated dump aborts the sync (the rollback net is only as good as the backup)
 - **Native Kinsta backup before push** (checkbox, default on): `POST /sites/environments/{env_id}/manual-backups {tag: 'kinsta-sync-pre-push'}` → poll `GET /operations/{id}` (200 done / 202 in progress / 500 failed). Max 5 manual slots per environment — `createKinstaBackup` frees a slot by deleting the oldest backup tagged `kinsta-sync` (never the user's own); if all 5 are the user's, the Kinsta backup is skipped with a notify. If enabled and creation fails, the push is ABORTED.
 - **Automatic rollback**: if a sync is cancelled or fails after the DB import started (`dbImportStarted`/`remoteImportStarted` flags), the catch block restores the respective backup — a half-imported or half-search-replaced DB is unusable. Uses a fresh `ActiveSync` for the restore (the cancelled one rejects all commands). Pushed files (rsync --delete) cannot be rolled back — only the DB.
-- Pre-flight check: DB sync requires the local site running (MySQL socket exists) — fails fast with a clear message
+- Pre-flight checks (fail fast with a clear message, before any backup/transfer): DB sync requires the local site running (MySQL socket exists); and `preflightRemote` runs `ssh … 'cd ~/public && wp --version'` (ConnectTimeout=15) to confirm SSH + remote WP-CLI are reachable — so a bad key / unreachable host surfaces immediately instead of mid-sync
 - DB credentials from `site.mysql.{database,user,password}` (fallback root/root/local); multisite adds `--network` to search-replace (`MultiSite.No` is the empty string — truthiness check)
 - Search-replace covers `https://`, `http://`, protocol-relative `//`, AND JSON-escaped `\/\/` URLs in both directions (the escaped pass catches URLs stored inside JSON — block attributes, plugin settings — that plain `//` would miss; one `\/\/domain` pass also covers `https:\/\/`/`http:\/\/`)
 - Stores API keys encrypted via `context.electron.safeStorage`

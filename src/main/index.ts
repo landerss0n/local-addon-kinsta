@@ -506,6 +506,29 @@ export function sshArgs(envInfo: EnvironmentInfo, remoteCmd: string): string[] {
   ];
 }
 
+// Fail-fast pre-flight: confirm SSH + remote WP-CLI + the public dir are reachable
+// BEFORE any destructive step. Without it a bad key / unreachable host only surfaces
+// mid-sync as a cryptic rsync/ssh failure (after backups have already run). Returns
+// null on success or a user-facing error message. ConnectTimeout bounds a dead host.
+async function preflightRemote(envInfo: EnvironmentInfo): Promise<string | null> {
+  const probe: ActiveSync = { cancelled: false, child: null };
+  try {
+    await runCommand(probe, 'ssh', [
+      '-p',
+      envInfo.sshPort,
+      '-o',
+      'StrictHostKeyChecking=accept-new',
+      '-o',
+      'ConnectTimeout=15',
+      `${envInfo.sshUser}@${envInfo.sshHost}`,
+      'cd ~/public && wp --version',
+    ]);
+    return null;
+  } catch (e: any) {
+    return `Could not reach Kinsta over SSH (or WP-CLI failed on the server). Check that your SSH key is added in MyKinsta and the environment has SSH access enabled. Details: ${e.message}`;
+  }
+}
+
 // macOS no longer ships GNU rsync: newer versions bundle openrsync, older ones
 // rsync 2.6.9 — neither supports --info=progress2 (GNU >= 3.1). Version sniffing
 // is unreliable across implementations, so we capability-probe each flag:
@@ -628,6 +651,30 @@ export function searchReplacePairs(fromDomain: string, toDomain: string): Array<
     [`//${fromDomain}`, `//${toDomain}`],
     [`\\/\\/${fromDomain}`, `\\/\\/${toDomain}`],
   ];
+}
+
+// ---------------------------------------------------------------------------
+// Robustness helpers
+// ---------------------------------------------------------------------------
+
+// A valid WP database dump (mysqldump / `wp db export`) always carries the
+// header/footer boilerplate, so it is comfortably larger than this. A 0-byte or
+// truncated file means the backup failed — restoring from it would be worse than
+// useless, so we refuse to proceed with the destructive import.
+export const MIN_DUMP_BYTES = 200;
+
+export function isLikelyValidSqlDump(sizeBytes: number): boolean {
+  return Number.isFinite(sizeBytes) && sizeBytes >= MIN_DUMP_BYTES;
+}
+
+// Transient errors worth retrying: no response at all (network drop, DNS, timeout)
+// or a server-side/throttling status (>=500, 429). 4xx (auth, not-found) are not
+// retried — they won't fix themselves.
+export function isTransientApiError(error: any): boolean {
+  if (!error) return false;
+  const status = error.response?.status;
+  if (status === undefined) return true; // no response — network/timeout
+  return status >= 500 || status === 429;
 }
 
 // ---------------------------------------------------------------------------
@@ -1161,6 +1208,10 @@ export default function (context: AddonMainContext): void {
         };
       }
 
+      // Fail-fast: confirm the remote is reachable before any backup/transfer
+      const pullPreflightError = await preflightRemote(envInfo);
+      if (pullPreflightError) return { success: false, error: pullPreflightError };
+
       // siteId + mode let listeners (status badge, drawer) filter events
       const sendProgress = (progress: SyncProgress) => {
         event.sender.send('kinsta:syncProgress', {
@@ -1254,6 +1305,17 @@ export default function (context: AddonMainContext): void {
             [`-u${db.user}`, `-p${db.password}`, `--socket=${socketPath}`, db.database],
             { stdoutFile: localBackupPath },
           );
+
+          // The rollback safety net is only as good as this backup — refuse to
+          // overwrite the local DB if the dump came out empty/truncated.
+          const localBackupSize = fs.existsSync(localBackupPath)
+            ? fs.statSync(localBackupPath).size
+            : 0;
+          if (!isLikelyValidSqlDump(localBackupSize)) {
+            throw new Error(
+              `Local database backup looks invalid (${localBackupSize} bytes) — aborting before overwriting the local database.`,
+            );
+          }
 
           sendProgress({
             stage: 'database',
@@ -1377,7 +1439,9 @@ export default function (context: AddonMainContext): void {
           try {
             fs.unlinkSync(dbDumpPath);
             await runCommand(sync, 'ssh', sshArgs(envInfo, `rm -f ${remoteDbPath}`));
-          } catch {}
+          } catch (e: any) {
+            console.warn('[Kinsta] Temp dump cleanup failed (non-fatal):', e?.message);
+          }
         }
 
         recordSync(localSiteId, 'pull', envInfo.envType, Date.now() - startedAt);
@@ -1473,6 +1537,10 @@ export default function (context: AddonMainContext): void {
         };
       }
 
+      // Fail-fast: confirm the remote is reachable before any backup/transfer
+      const pushPreflightError = await preflightRemote(envInfo);
+      if (pushPreflightError) return { success: false, error: pushPreflightError };
+
       // siteId + mode let listeners (status badge, drawer) filter events
       const sendProgress = (progress: SyncProgress) => {
         event.sender.send('kinsta:syncProgress', {
@@ -1543,6 +1611,23 @@ export default function (context: AddonMainContext): void {
           'ssh',
           sshArgs(envInfo, 'cd ~/public && wp db export ~/kinsta-sync-pre-push-backup.sql'),
         );
+
+        // Verify the remote backup is non-empty before touching anything — the
+        // automatic rollback restores from this exact file. Abort if it looks bad
+        // (server data is still untouched at this point).
+        let remoteBackupWc = '';
+        await runCommand(
+          sync,
+          'ssh',
+          sshArgs(envInfo, 'wc -c < ~/kinsta-sync-pre-push-backup.sql'),
+          { onStdout: (c: string) => (remoteBackupWc += c) },
+        );
+        const remoteBackupSize = parseInt(remoteBackupWc.trim(), 10) || 0;
+        if (!isLikelyValidSqlDump(remoteBackupSize)) {
+          throw new Error(
+            `Remote database backup looks invalid (${remoteBackupSize} bytes) — aborting the push before any change. Your server was not modified.`,
+          );
+        }
 
         // 2. Sync files (live progress, flags adapted to the rsync version)
         sendProgress({ stage: 'files', progress: 8, message: 'Syncing files to Kinsta...' });
@@ -1718,7 +1803,9 @@ export default function (context: AddonMainContext): void {
           try {
             fs.unlinkSync(dbDumpPath);
             await runCommand(sync, 'ssh', sshArgs(envInfo, `rm -f ${remoteDbPath}`));
-          } catch {}
+          } catch (e: any) {
+            console.warn('[Kinsta] Temp dump cleanup failed (non-fatal):', e?.message);
+          }
         }
 
         recordSync(localSiteId, 'push', envInfo.envType, Date.now() - startedAt);
@@ -1822,11 +1909,25 @@ async function clearKinstaCaches(
 }
 
 function getKinstaClient(apiKey: string): AxiosInstance {
-  return axios.create({
+  const client = axios.create({
     baseURL: KINSTA_API_BASE,
+    // Without a timeout a hung request freezes the whole sync indefinitely.
+    timeout: 30000,
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
   });
+  // Retry transient failures (network drop, timeout, 5xx, 429) with linear backoff.
+  client.interceptors.response.use(undefined, async (error: any) => {
+    const cfg = error?.config;
+    if (!cfg) throw error;
+    cfg.__retryCount = (cfg.__retryCount || 0) + 1;
+    if (cfg.__retryCount <= 2 && isTransientApiError(error)) {
+      await new Promise((resolve) => setTimeout(resolve, 500 * cfg.__retryCount));
+      return client(cfg);
+    }
+    throw error;
+  });
+  return client;
 }
