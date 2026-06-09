@@ -24,7 +24,10 @@ import {
   buildPushFileSelection,
 } from './pushHelpers';
 
-const { ipcRenderer } = window.require('electron');
+const { ipcRenderer, shell } = window.require('electron');
+
+const RSYNC_TROUBLESHOOTING_URL =
+  'https://github.com/landerss0n/local-addon-kinsta#troubleshooting';
 
 interface Environment {
   id: string;
@@ -156,8 +159,15 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
   const [isComplete, setIsComplete] = useState(false);
   const [completionWarning, setCompletionWarning] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [brewCopied, setBrewCopied] = useState(false);
 
   const previewSeq = useRef(0);
+
+  const copyBrewCommand = () => {
+    navigator.clipboard.writeText('brew install rsync');
+    setBrewCopied(true);
+    setTimeout(() => setBrewCopied(false), 2000);
+  };
 
   // FlyModal carries Local's theme (dark/light) — we inherit its
   // background/text. The file-list area gets the same subtle contrast
@@ -637,16 +647,58 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                 {degraded && (
                   <div
                     style={{
-                      padding: '8px 20px',
+                      padding: '10px 20px',
                       fontSize: '12px',
+                      lineHeight: 1.5,
                       color: '#fcc419',
                       backgroundColor: 'rgba(252,196,25,0.08)',
                       borderBottom: border,
                       flexShrink: 0,
                     }}
                   >
-                    Limited preview (no sizes / change detail) — run <code>brew install rsync</code>{' '}
-                    for the full diff.
+                    <div style={{ fontWeight: 600 }}>
+                      Limited preview — file names only, no sizes or change type.
+                    </div>
+                    <div style={{ opacity: 0.85, marginTop: '2px' }}>
+                      macOS ships openrsync, which doesn&apos;t support{' '}
+                      <code>--itemize-changes</code>, so per-file sizes and change types can&apos;t
+                      be detected. Installing GNU rsync enables the full diff.
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        marginTop: '6px',
+                      }}
+                    >
+                      <code
+                        style={{
+                          backgroundColor: 'rgba(252,196,25,0.14)',
+                          padding: '2px 6px',
+                          borderRadius: '3px',
+                        }}
+                      >
+                        brew install rsync
+                      </code>
+                      <TextButton
+                        onClick={copyBrewCommand}
+                        style={{ fontSize: '12px', padding: 0, height: 'auto', minWidth: 0 }}
+                      >
+                        {brewCopied ? 'Copied!' : 'Copy'}
+                      </TextButton>
+                      <span style={{ opacity: 0.3 }}>|</span>
+                      <a
+                        href={RSYNC_TROUBLESHOOTING_URL}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          shell.openExternal(RSYNC_TROUBLESHOOTING_URL);
+                        }}
+                        style={{ color: '#fcc419', textDecoration: 'underline', cursor: 'pointer' }}
+                      >
+                        Troubleshooting
+                      </a>
+                    </div>
                   </div>
                 )}
 
