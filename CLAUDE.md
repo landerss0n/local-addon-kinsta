@@ -132,7 +132,9 @@ npm run build           # Both
 npm test                # vitest — unit tests for main-process helpers
 ```
 
-Tests live in `src/main/index.test.ts` (excluded from the tsc build). The `@getflywheel` imports in `src/main/index.ts` are type-only so the module is importable outside Electron; pure helpers (validators, rsync progress parsing, `describePartialTransfer`, …) are exported for tests.
+Tests live in `src/main/index.test.ts` (pure-helper unit tests) and `src/main/sync.integration.test.ts` (pull/push orchestration) — both excluded from the tsc build via `**/*.test.ts`. The `@getflywheel` imports in `src/main/index.ts` are type-only so the module is importable outside Electron; pure helpers (validators, rsync progress parsing, `describePartialTransfer`, …) are exported for tests.
+
+The pull/push orchestration is extracted from the IPC closures into exported `executePull(params, deps)` / `executePush(params, deps)`; the `kinsta:pull`/`kinsta:push` handlers are thin wrappers that build a `sendProgress` and call `defaultPullPushDeps(sendProgress)`. `PullPushDeps` is the injectable seam (runCommand, fs, the Kinsta API client + backup/cache fns, binary/socket/rsync resolvers, preflight, notify/recordSync, the `activeSyncs`/`activePreviews` maps). The integration test passes fakes: a command runner that matches on command name/args (simulates rsync progress, writes the size-checked SQL dumps, and can fail/cancel at a chosen step), an in-memory link store, and a real `fs` pointed at an `os.tmpdir()` sandbox — no network or spawned processes. It covers happy-path pull/push, import-failure→DB restore (local + remote), cancel-mid-import→rollback, invalid/empty backup→abort-before-import, preflight failure, Kinsta-native-backup failure→push aborted, and the "sync already running" guard.
 
 **Reload workflow:** the add-on's main process watches `lib/renderer/` (`watchRendererBundle`) and reloads Local's windows automatically when webpack rewrites the bundle — renderer changes hot-reload in ~1s with no restart. Main-process changes still require a full Local restart (Electron can't swap the main process):
 
