@@ -305,7 +305,7 @@ describe('executePull', () => {
     expect(labels).not.toContain('mysql-restore'); // nothing to roll back
   });
 
-  it('aborts when the remote pre-flight fails, before registering a sync', async () => {
+  it('aborts and leaves no sync registered when the remote pre-flight fails', async () => {
     const { deps, calls } = makeDeps({
       preflightRemote: async () => 'Could not reach Kinsta over SSH',
     });
@@ -324,6 +324,66 @@ describe('executePull', () => {
 
     expect(result).toEqual({ success: false, error: 'A sync is already running for this site' });
     expect(calls).toHaveLength(0);
+  });
+
+  it('refuses a second concurrent sync started while the first is still in pre-flight', async () => {
+    // Gate pre-flight so the first sync is suspended between the guard check and
+    // registration — the exact window a TOCTOU race could exploit.
+    let releasePreflight!: () => void;
+    const preflightGate = new Promise<void>((res) => {
+      releasePreflight = res;
+    });
+    let preflightCalls = 0;
+    const { deps } = makeDeps({
+      preflightRemote: async () => {
+        preflightCalls++;
+        await preflightGate;
+        return null;
+      },
+    });
+
+    const first = executePull(pullParams(), deps); // suspends inside pre-flight
+    const second = executePull(pullParams(), deps); // must hit the guard, not pre-flight
+
+    // A macrotask marker: a correctly-guarded second call settles on a microtask
+    // and wins this race; a racing (buggy) second call is still suspended in its
+    // own pre-flight when the marker fires.
+    const pendingMarker = Symbol('pending');
+    const settled = await Promise.race([
+      second,
+      new Promise((res) => setImmediate(() => res(pendingMarker))),
+    ]);
+
+    expect(settled).toEqual({ success: false, error: 'A sync is already running for this site' });
+    expect(preflightCalls).toBe(1); // guard short-circuited before a 2nd pre-flight
+
+    releasePreflight();
+    expect((await first).success).toBe(true);
+  });
+
+  it('preserves the original sync error when wp-config restore fails in the finally', async () => {
+    // fs whose unlinkSync throws only for the wp-config backup — simulates the
+    // restore step failing inside the finally block.
+    const fsThatFailsBackupUnlink = {
+      ...fs,
+      unlinkSync: (p: fs.PathLike, ...rest: any[]) => {
+        if (String(p).endsWith('.kinsta-sync-bak')) {
+          throw new Error('simulated unlink failure');
+        }
+        return (fs.unlinkSync as any)(p, ...rest);
+      },
+    } as any;
+    const { deps, calls } = makeDeps({
+      fs: fsThatFailsBackupUnlink,
+      runner: makeFakeRunner({ failAt: 'local-search-replace' }),
+    });
+
+    const result = await executePull(pullParams(), deps);
+
+    expect(result.success).toBe(false);
+    // The masking bug would surface 'simulated unlink failure' here instead.
+    expect(result.error).toContain('fake failure at local-search-replace');
+    expect(steps(calls)).toContain('mysql-restore'); // rollback still ran
   });
 });
 
@@ -407,5 +467,52 @@ describe('executePush', () => {
 
     expect(result).toEqual({ success: false, error: 'A sync is already running for this site' });
     expect(calls).toHaveLength(0);
+  });
+
+  it('refuses a second concurrent sync started while the first is still in pre-flight', async () => {
+    let releasePreflight!: () => void;
+    const preflightGate = new Promise<void>((res) => {
+      releasePreflight = res;
+    });
+    let preflightCalls = 0;
+    const { deps } = makeDeps({
+      preflightRemote: async () => {
+        preflightCalls++;
+        await preflightGate;
+        return null;
+      },
+    });
+
+    const first = executePush(pushParams(), deps);
+    const second = executePush(pushParams(), deps);
+
+    const pendingMarker = Symbol('pending');
+    const settled = await Promise.race([
+      second,
+      new Promise((res) => setImmediate(() => res(pendingMarker))),
+    ]);
+
+    expect(settled).toEqual({ success: false, error: 'A sync is already running for this site' });
+    expect(preflightCalls).toBe(1);
+
+    releasePreflight();
+    expect((await first).success).toBe(true);
+  });
+
+  it('aborts the push when the local site domain has shell-unsafe characters', async () => {
+    const { deps, calls } = makeDeps();
+    const params = pushParams();
+    // A single quote would break out of the remote single-quoted search-replace
+    // shell string — must be rejected before any destructive step.
+    params.site.domain = "evil'.local";
+
+    const result = await executePush(params, deps);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/domain/i);
+    const labels = steps(calls);
+    expect(labels).not.toContain('rsync');
+    expect(labels).not.toContain('remote-search-replace');
+    expect(labels).not.toContain('remote-db-import');
   });
 });

@@ -19,45 +19,18 @@ import {
 import KinstaIcon from './KinstaIcon';
 import {
   buildEnvInfo,
+  envLabel as getEnvLabel,
   visibleDiffRows,
   summarizeSelection,
   buildPushFileSelection,
 } from './pushHelpers';
+import { STATUS, tint } from './colors';
+import { Environment, EnvironmentInfo, SyncProgress } from './types';
 
 const { ipcRenderer, shell } = window.require('electron');
 
 const RSYNC_TROUBLESHOOTING_URL =
   'https://github.com/landerss0n/local-addon-kinsta#troubleshooting';
-
-interface Environment {
-  id: string;
-  name: string;
-  display_name: string;
-  is_premium: boolean;
-  cdn_cache_id?: string;
-  primaryDomain?: { name: string };
-  domains?: Array<{ name: string }>;
-  ssh_connection?: {
-    ssh_ip?: { external_ip: string };
-    ssh_port?: string;
-  };
-}
-
-interface EnvironmentInfo {
-  envId: string;
-  envType: 'staging' | 'live';
-  sshHost: string;
-  sshPort: string;
-  sshUser: string;
-  remoteDomain: string;
-  cdnCacheId?: string;
-}
-
-interface SyncProgress {
-  stage: string;
-  progress: number;
-  message: string;
-}
 
 // Mirrors PushDiffRow in src/main/index.ts (+ renderer-side selection state)
 interface DiffRow {
@@ -274,7 +247,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
 
   const env = environments.find((e) => e.id === selectedEnvId);
   const isLive = !!env?.is_premium;
-  const envLabel = env ? (env.is_premium ? 'Production' : 'Staging') : '';
+  const envLabel = getEnvLabel(env);
 
   const toggleAll = (checked: boolean) => {
     setRows((rs) => rs.map((r) => ({ ...r, selected: checked })));
@@ -368,9 +341,10 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
       case 'op':
         if (row.op === 'add') return <FileAddedIcon aria-hidden />;
         if (row.op === 'update') return <FileRightArrowIcon aria-hidden />;
-        return <span style={{ color: '#d04d5c', fontWeight: 700 }}>✕</span>;
+        return <span style={{ color: STATUS.danger, fontWeight: 700 }}>✕</span>;
       case 'remote': {
-        const color = row.op === 'add' ? '#50c083' : row.op === 'delete' ? '#d04d5c' : undefined;
+        const color =
+          row.op === 'add' ? STATUS.success : row.op === 'delete' ? STATUS.danger : undefined;
         const text =
           row.op === 'add'
             ? 'Will be added'
@@ -521,7 +495,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
 
             <div style={{ textAlign: 'center', marginTop: 'auto' }}>
               {isLive && !isPushing && !isComplete && (
-                <p style={{ fontSize: '12px', color: '#d04d5c', marginBottom: '10px' }}>
+                <p style={{ fontSize: '12px', color: STATUS.danger, marginBottom: '10px' }}>
                   This will modify your production site.
                 </p>
               )}
@@ -574,7 +548,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                       <p
                         style={{
                           fontSize: '13px',
-                          color: '#fcc419',
+                          color: STATUS.warning,
                           textAlign: 'center',
                           maxWidth: '460px',
                         }}
@@ -635,7 +609,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                     <span style={{ opacity: 0.3 }}>|</span>
                     <span
                       title="Files to delete"
-                      style={{ color: deleteCount ? '#d04d5c' : undefined }}
+                      style={{ color: deleteCount ? STATUS.danger : undefined }}
                     >
                       ✕ {deleteCount}
                     </span>
@@ -650,8 +624,8 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                       padding: '10px 20px',
                       fontSize: '12px',
                       lineHeight: 1.5,
-                      color: '#fcc419',
-                      backgroundColor: 'rgba(252,196,25,0.08)',
+                      color: STATUS.warning,
+                      backgroundColor: tint(STATUS.warning, 0.08),
                       borderBottom: border,
                       flexShrink: 0,
                     }}
@@ -674,7 +648,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                     >
                       <code
                         style={{
-                          backgroundColor: 'rgba(252,196,25,0.14)',
+                          backgroundColor: tint(STATUS.warning, 0.14),
                           padding: '2px 6px',
                           borderRadius: '3px',
                         }}
@@ -691,7 +665,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                           margin: 0,
                           font: 'inherit',
                           lineHeight: 'inherit',
-                          color: '#fcc419',
+                          color: STATUS.warning,
                           textDecoration: 'underline',
                           cursor: 'pointer',
                         }}
@@ -705,7 +679,11 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                           e.preventDefault();
                           shell.openExternal(RSYNC_TROUBLESHOOTING_URL);
                         }}
-                        style={{ color: '#fcc419', textDecoration: 'underline', cursor: 'pointer' }}
+                        style={{
+                          color: STATUS.warning,
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                        }}
                       >
                         Troubleshooting
                       </a>
@@ -733,7 +711,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                     style={{
                       flex: 1,
                       padding: '24px',
-                      color: '#d04d5c',
+                      color: STATUS.danger,
                       fontSize: '13px',
                       whiteSpace: 'pre-wrap',
                     }}
@@ -795,7 +773,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
           <p style={{ color: '#888', fontSize: '14px', marginBottom: '10px', lineHeight: 1.5 }}>
             {addUpdateCount > 0 && <>{addUpdateCount} file(s) will be synced. </>}
             {deleteCount > 0 && (
-              <strong style={{ color: '#d04d5c' }}>
+              <strong style={{ color: STATUS.danger }}>
                 {deleteCount} item(s) will be deleted on Kinsta — folders with their entire
                 contents.{' '}
               </strong>
@@ -808,7 +786,7 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
             )}
           </p>
           {isLive && (
-            <p style={{ color: '#d04d5c', fontSize: '13px', marginBottom: '24px' }}>
+            <p style={{ color: STATUS.danger, fontSize: '13px', marginBottom: '24px' }}>
               This will overwrite your production site. This action cannot be undone.
             </p>
           )}
@@ -816,7 +794,9 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
             <TextButton onClick={() => setShowConfirmModal(false)}>Cancel</TextButton>
             <PrimaryButton
               onClick={executePush}
-              style={isLive ? { backgroundColor: '#d04d5c', borderColor: '#d04d5c' } : undefined}
+              style={
+                isLive ? { backgroundColor: STATUS.danger, borderColor: STATUS.danger } : undefined
+              }
             >
               Yes, Push to {isLive ? 'Production' : 'Staging'}
             </PrimaryButton>

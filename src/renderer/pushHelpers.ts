@@ -61,6 +61,14 @@ export function buildEnvInfo(
   };
 }
 
+// The user-facing label for an environment. Kinsta's "premium" flag is the
+// production environment; everything else is staging. ("Live" is the stored
+// envType; "Production" is the label shown throughout the UI.)
+export function envLabel(env: { is_premium?: boolean } | null | undefined): string {
+  if (!env) return '';
+  return env.is_premium ? 'Production' : 'Staging';
+}
+
 // Hide add/update directory rows (implied by their files); keep folder deletions.
 export function visibleDiffRows<T extends DiffRowLike>(rows: T[]): T[] {
   return rows.filter((r) => !(r.isDir && r.op !== 'delete'));

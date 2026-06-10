@@ -3,6 +3,9 @@ import { useState, useEffect } from 'react';
 import { Title, PrimaryButton, TextButton, Spinner } from '@getflywheel/local-components';
 import { dispatchKinstaAction } from './KinstaSitePanel';
 import KinstaIcon from './KinstaIcon';
+import { envLabel } from './pushHelpers';
+import { STATUS } from './colors';
+import { Environment } from './types';
 
 const { ipcRenderer, shell } = window.require('electron');
 
@@ -21,20 +24,6 @@ interface SiteLink {
   lastPullAt?: string;
   lastPushAt?: string;
   history?: SyncHistoryEntry[];
-}
-
-interface Environment {
-  id: string;
-  name: string;
-  display_name: string;
-  is_premium: boolean;
-  cdn_cache_id?: string;
-  primaryDomain?: { name: string };
-  domains?: Array<{ name: string }>;
-  ssh_connection?: {
-    ssh_ip?: { external_ip: string };
-    ssh_port?: string;
-  };
 }
 
 interface Props {
@@ -101,10 +90,6 @@ function formatDuration(ms: number): string {
   const min = Math.floor(totalSec / 60);
   const sec = totalSec % 60;
   return `${min}m ${sec}s`;
-}
-
-function envLabel(env: Environment): string {
-  return env.is_premium ? 'Production' : 'Staging';
 }
 
 function envDomain(env: Environment): string {
@@ -290,10 +275,10 @@ const KinstaPage: React.FC<Props> = ({ site }) => {
                         style={{
                           ...smallButtonStyle,
                           ...(cacheState[env.id] === 'done'
-                            ? { borderColor: '#50c083', color: '#50c083' }
+                            ? { borderColor: STATUS.success, color: STATUS.success }
                             : {}),
                           ...(cacheState[env.id] === 'error'
-                            ? { borderColor: '#d04d5c', color: '#d04d5c' }
+                            ? { borderColor: STATUS.danger, color: STATUS.danger }
                             : {}),
                         }}
                         onClick={() => handleClearCache(env)}
@@ -325,7 +310,7 @@ const KinstaPage: React.FC<Props> = ({ site }) => {
                     <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <span
                         style={{
-                          color: entry.mode === 'pull' ? '#50c083' : '#fcc419',
+                          color: entry.mode === 'pull' ? STATUS.success : STATUS.warning,
                           fontSize: '13px',
                         }}
                       >

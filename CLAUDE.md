@@ -21,7 +21,17 @@ Local add-ons are Electron apps with two entry points, declared in `package.json
 
 Both modules `export default function (context) {...}` — Local passes a `context` object.
 
-### Main Process (`src/main/index.ts`)
+### Main Process (`src/main/`)
+
+The main process is split into focused modules (a strict dependency DAG, leaves first). `index.ts` (~550 lines) keeps only the `export default function(context)` entry point, IPC handlers, the push-preview handler, `runCommand`, `preflightRemote`, `notify`, `watchRendererBundle`, `defaultPullPushDeps`, and the `activeSyncs`/`activePreviews` maps — and **re-exports the whole public API** (`export * from './sync'`, etc.) so tests and callers can keep importing `from './index'`:
+
+- `types.ts` — all shared interfaces + the `CancelledError` class
+- `constants.ts` — `EXCLUDE_PATTERNS`, `REMOTE_PUSH_BACKUP`, API base, limits
+- `validators.ts` — `isValid*`, `validateEnvironmentInfo`, `expandPath`, `isLikelyValidSqlDump`, `isTransientApiError`, `getDbCredentials`, `searchReplacePairs`
+- `rsync.ts` — `resolveRsync`, progress/itemize parsers, `safeRemoteRelPath`, `buildPushRsyncArgs`, `sshArgs`, `describePartialTransfer`
+- `kinstaApi.ts` — `getKinstaClient`, `waitForKinstaOperation`, `createKinstaBackup`, `clearKinstaCaches`
+- `sync.ts` — `executePull`/`executePush` (pure of module state — everything comes via `PullPushDeps`)
+- `localPaths.ts` / `config.ts` — the only **stateful** modules; module-level paths/`safeStorage` are set via `initLocalPaths(userDataPath, appPath)` / `initConfig(userDataPath, safeStorage)`, which the entry point calls at startup (order: initLocalPaths → initConfig → migrateLegacyConfig → cleanupTempFiles). `config.ts` exposes `getTempDir()` for `defaultPullPushDeps`.
 
 - Handles IPC communication with renderer
 - Manages Kinsta API calls (axios — `context.request` was removed in Local 8.0); `getKinstaClient` sets a 30s timeout and retries transient failures (network/timeout/5xx/429) twice with linear backoff via a response interceptor (`isTransientApiError`)
@@ -44,9 +54,10 @@ Both modules `export default function (context) {...}` — Local passes a `conte
 - `KinstaPage.tsx` — The add-on's home: a dedicated page under the site's More tab (route `/main/site-info/:siteId/kinsta`). Shows link status, last pulled/pushed, and Pull/Push/Link/Unlink actions. Title bar says "Kinsta" (docs requirement for new tabs).
 - `KinstaSitePanel.tsx` — `KinstaDrawerHost`: invisible component mounted via `SiteInfo_TabNav_Items`; owns the drawers and listens for `kinsta:action` events
 - `KinstaLinkDrawer.tsx` — Drawer for connecting API and linking sites (success view with "Pull from Kinsta" shortcut after linking)
-- `KinstaSyncDrawer.tsx` — Drawer for pull sync operations (cancel button, last-synced info). Push code paths remain but are no longer reached.
+- `KinstaPullDrawer.tsx` — Pull-only drawer (cancel button, last-synced info). Uses the shared `KinstaIcon` and `pushHelpers.buildEnvInfo`. (Push moved entirely to `KinstaPushScreen`; the old `KinstaSyncDrawer` and its dead push paths were removed.)
 - `KinstaPushScreen.tsx` — Full-screen Magic Sync-style push preview (branch `feat/push-preview-fullscreen`): `FlyModal` styled fullscreen via injected CSS classes (native overlay → focus trap/ESC/X for free), left sidebar (env `FlySelect`, option checkboxes, push button), right pane (`VirtualTable` file diff with select-all `mixed` checkbox, mode `FlySelect` newer/all, ⟳/✕/mb counts). Data from `kinsta:pushPreview` (rsync dry-run `--itemize-changes --out-format='%i|%l|%n'`, parsed by exported `parseItemizeLine`; degraded name-only mode when openrsync lacks the flags). Selective push: checked files via `--files-from` (no `--delete`), checked deletions via strictly-validated single-quoted paths (`safeRemoteRelPath`) in chunked `ssh rm -rf --` commands.
 - `KinstaSettings.tsx` — Preferences panel for API configuration
+- Shared renderer helpers: `pushHelpers.ts` (`buildEnvInfo`, `sanitizeSshUser`, `envLabel`, diff/selection helpers — unit-tested), `types.ts` (`Environment`/`EnvironmentInfo`/`SyncProgress`), `colors.ts` (`STATUS` palette + `tint(hex, alpha)` for the rgba backgrounds; unit-tested to emit the exact rgba strings). Use these instead of re-declaring per file.
 
 ### UI architecture (native pattern per "Giving your add-on a home")
 
@@ -132,7 +143,7 @@ npm run build           # Both
 npm test                # vitest — unit tests for main-process helpers
 ```
 
-Tests live in `src/main/index.test.ts` (pure-helper unit tests) and `src/main/sync.integration.test.ts` (pull/push orchestration) — both excluded from the tsc build via `**/*.test.ts`. The `@getflywheel` imports in `src/main/index.ts` are type-only so the module is importable outside Electron; pure helpers (validators, rsync progress parsing, `describePartialTransfer`, …) are exported for tests.
+Tests live in `src/main/index.test.ts` (pure-helper unit tests), `src/main/sync.integration.test.ts` (pull/push orchestration), and `src/renderer/pushHelpers.test.ts` + `src/renderer/colors.test.ts` (pure renderer helpers) — all excluded from the tsc build via `**/*.test.ts`. The `@getflywheel` imports are type-only (now in `types.ts`) so every module is importable outside Electron; the pure helpers live in their modules (`validators.ts`, `rsync.ts`, …) but are re-exported from `index.ts`, so the tests still import them `from './index'`.
 
 The pull/push orchestration is extracted from the IPC closures into exported `executePull(params, deps)` / `executePush(params, deps)`; the `kinsta:pull`/`kinsta:push` handlers are thin wrappers that build a `sendProgress` and call `defaultPullPushDeps(sendProgress)`. `PullPushDeps` is the injectable seam (runCommand, fs, the Kinsta API client + backup/cache fns, binary/socket/rsync resolvers, preflight, notify/recordSync, the `activeSyncs`/`activePreviews` maps). The integration test passes fakes: a command runner that matches on command name/args (simulates rsync progress, writes the size-checked SQL dumps, and can fail/cancel at a chosen step), an in-memory link store, and a real `fs` pointed at an `os.tmpdir()` sandbox — no network or spawned processes. It covers happy-path pull/push, import-failure→DB restore (local + remote), cancel-mid-import→rollback, invalid/empty backup→abort-before-import, preflight failure, Kinsta-native-backup failure→push aborted, and the "sync already running" guard.
 

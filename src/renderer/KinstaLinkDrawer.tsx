@@ -7,6 +7,7 @@ import {
   Title,
   InputSearch,
 } from '@getflywheel/local-components';
+import { STATUS, tint } from './colors';
 
 const { ipcRenderer } = window.require('electron');
 
@@ -518,7 +519,7 @@ const KinstaLinkDrawer: React.FC<Props> = ({
                   width: '80px',
                   height: '80px',
                   borderRadius: '50%',
-                  backgroundColor: 'rgba(80, 192, 131, 0.15)',
+                  backgroundColor: tint(STATUS.success, 0.15),
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -530,7 +531,7 @@ const KinstaLinkDrawer: React.FC<Props> = ({
                   height="40"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="#50c083"
+                  stroke={STATUS.success}
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -538,7 +539,7 @@ const KinstaLinkDrawer: React.FC<Props> = ({
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               </div>
-              <Title size="m" style={{ marginBottom: '8px', color: '#50c083' }}>
+              <Title size="m" style={{ marginBottom: '8px', color: STATUS.success }}>
                 Site Linked!
               </Title>
               <span style={{ opacity: 0.7, display: 'block', marginBottom: '8px' }}>
@@ -773,10 +774,10 @@ const KinstaLinkDrawer: React.FC<Props> = ({
               style={{
                 marginTop: '16px',
                 padding: '12px 16px',
-                backgroundColor: 'rgba(208, 77, 92, 0.1)',
-                border: '1px solid rgba(208, 77, 92, 0.3)',
+                backgroundColor: tint(STATUS.danger, 0.1),
+                border: `1px solid ${tint(STATUS.danger, 0.3)}`,
                 borderRadius: '8px',
-                color: '#d04d5c',
+                color: STATUS.danger,
                 fontSize: '13px',
               }}
             >

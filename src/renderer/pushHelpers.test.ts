@@ -2,10 +2,22 @@ import { describe, it, expect } from 'vitest';
 import {
   sanitizeSshUser,
   buildEnvInfo,
+  envLabel,
   visibleDiffRows,
   summarizeSelection,
   buildPushFileSelection,
 } from './pushHelpers';
+
+describe('envLabel', () => {
+  it('labels premium as Production and non-premium as Staging', () => {
+    expect(envLabel({ is_premium: true })).toBe('Production');
+    expect(envLabel({ is_premium: false })).toBe('Staging');
+  });
+  it('returns an empty string for a missing env', () => {
+    expect(envLabel(null)).toBe('');
+    expect(envLabel(undefined)).toBe('');
+  });
+});
 
 describe('sanitizeSshUser', () => {
   it('lowercases and strips everything non-alphanumeric', () => {

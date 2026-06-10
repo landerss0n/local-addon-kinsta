@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import KinstaSyncDrawer from './KinstaSyncDrawer';
+import KinstaPullDrawer from './KinstaPullDrawer';
 import KinstaLinkDrawer from './KinstaLinkDrawer';
 import KinstaPushScreen from './KinstaPushScreen';
 
@@ -124,14 +124,13 @@ export const KinstaDrawerHost: React.FC<Props> = ({ site }) => {
       />
 
       {drawerMode && siteLink && (
-        <KinstaSyncDrawer
+        <KinstaPullDrawer
           isOpen={true}
           onClose={() => {
             setDrawerMode(null);
-            // Sync may have updated lastPullAt/lastPushAt — refresh the page
+            // Pull may have updated lastPullAt — refresh the page
             notifyStateChanged();
           }}
-          mode={drawerMode}
           site={site}
           siteLink={siteLink}
         />
