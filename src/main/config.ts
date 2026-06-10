@@ -50,18 +50,25 @@ export function migrateLegacyConfig(): void {
   if (CONFIG_DIR === LEGACY_CONFIG_DIR) return;
   if (!fs.existsSync(LEGACY_CONFIG_DIR)) return;
   ensureConfigDir();
+  migrateConfigFiles(LEGACY_CONFIG_DIR, CONFIG_DIR);
+}
+
+// Copy any config files missing from targetDir, then rename the legacy dir away
+// so migration runs exactly once. Exported (and parameterized) so it can be
+// unit-tested with temp dirs instead of the real ~/.kinsta-sync.
+export function migrateConfigFiles(legacyDir: string, targetDir: string): void {
   for (const file of ['config.json', '.api-key.enc', 'sites.json']) {
-    const from = path.join(LEGACY_CONFIG_DIR, file);
-    const to = path.join(CONFIG_DIR, file);
+    const from = path.join(legacyDir, file);
+    const to = path.join(targetDir, file);
     if (fs.existsSync(from) && !fs.existsSync(to)) {
       fs.copyFileSync(from, to);
-      console.log(`[Kinsta] Migrated ${file} to ${CONFIG_DIR}`);
+      console.log(`[Kinsta] Migrated ${file} to ${targetDir}`);
     }
   }
   // Keep the old dir as a backup, but make sure migration never runs again
   try {
-    fs.renameSync(LEGACY_CONFIG_DIR, `${LEGACY_CONFIG_DIR}.migrated`);
-    console.log('[Kinsta] Legacy config dir renamed to ~/.kinsta-sync.migrated');
+    fs.renameSync(legacyDir, `${legacyDir}.migrated`);
+    console.log(`[Kinsta] Legacy config dir renamed to ${legacyDir}.migrated`);
   } catch (e) {
     console.error('[Kinsta] Could not rename legacy config dir:', e);
   }

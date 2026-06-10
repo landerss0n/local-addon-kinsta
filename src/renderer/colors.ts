@@ -7,6 +7,7 @@ export const STATUS = {
   success: '#50c083', // green — pull / complete
   danger: '#d04d5c', // red — errors / production overwrite
   warning: '#fcc419', // amber — push / caution
+  linked: '#51cf66', // green — linked / link success accent (link drawer)
 } as const;
 
 // Translate a #rrggbb status color into an rgba() tint for backgrounds/borders.

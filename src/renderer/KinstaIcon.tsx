@@ -1,7 +1,6 @@
 import * as React from 'react';
 
-// Shared theme-aware Kinsta icon. (KinstaLinkDrawer still carries its own
-// embedded copies with unique SVG def IDs — migrate them here when touched next.)
+// Shared theme-aware Kinsta icon used by all add-on screens.
 
 // Kinsta icon - dark background version (for light theme)
 const KinstaIconDark = ({ size = 40 }: { size?: number }) => (

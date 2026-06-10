@@ -50,9 +50,13 @@ const KinstaPullDrawer: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
   }, [isOpen, siteLink]);
 
   useEffect(() => {
-    const progressHandler = (_event: any, progress: SyncProgress & { siteId?: string }) => {
-      // Events carry siteId — ignore other sites' syncs
+    const progressHandler = (
+      _event: any,
+      progress: SyncProgress & { siteId?: string; mode?: string },
+    ) => {
+      // Events carry siteId + mode — ignore other sites' syncs and push events
       if (progress.siteId && progress.siteId !== site.id) return;
+      if (progress.mode && progress.mode !== 'pull') return;
       if (progress.stage === 'error' || progress.stage === 'cancelled') return; // handled via invoke result
       setSyncProgress(progress);
       if (progress.stage === 'done') {
@@ -435,7 +439,7 @@ const KinstaPullDrawer: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                   height="40"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="#50c083"
+                  stroke={STATUS.success}
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"

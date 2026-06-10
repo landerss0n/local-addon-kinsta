@@ -282,6 +282,10 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
 
     if (result.success) {
       setCompletionWarning(result.warning || null);
+      // Defensive: the 'done' progress event normally flips these; don't hang on
+      // the spinner if it's ever dropped/reordered (idempotent with the event).
+      setIsComplete(true);
+      setIsPushing(false);
     } else {
       setError(result.cancelled ? null : result.error);
       setIsPushing(false);

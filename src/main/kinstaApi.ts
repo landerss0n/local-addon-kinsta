@@ -88,6 +88,8 @@ export async function createKinstaBackup(
     }
     onMessage('Freeing a Kinsta backup slot (removing our oldest)...');
     const del = await client.delete(`/sites/environments/backups/${ours[0].id}`);
+    if (!del.data?.operation_id)
+      throw new Error('Kinsta did not return an operation id for the backup deletion');
     await waitForKinstaOperation(client, del.data.operation_id, sync);
   }
 
@@ -95,6 +97,8 @@ export async function createKinstaBackup(
   const created = await client.post(`/sites/environments/${envId}/manual-backups`, {
     tag: KINSTA_BACKUP_TAG,
   });
+  if (!created.data?.operation_id)
+    throw new Error('Kinsta did not return an operation id for the backup');
   await waitForKinstaOperation(client, created.data.operation_id, sync);
   return true;
 }

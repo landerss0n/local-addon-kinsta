@@ -70,8 +70,6 @@ export async function executePull(params: SyncParams, deps: PullPushDeps): Promi
 
   const startedAt = Date.now();
 
-  const { localPublicPath, sshCommandForRsync, remoteHost } = rsyncSshContext(site, envInfo);
-
   // Once the local DB import starts, a cancel/crash leaves the database
   // half-written — these let the catch block restore the pre-pull backup.
   let dbImportStarted = false;
@@ -79,6 +77,10 @@ export async function executePull(params: SyncParams, deps: PullPushDeps): Promi
   const db = getDbCredentials(site);
 
   try {
+    // Derive paths/SSH target inside the try so a throw here can't leak the
+    // activeSyncs registration — the finally always unregisters.
+    const { localPublicPath, sshCommandForRsync, remoteHost } = rsyncSshContext(site, envInfo);
+
     // Build exclude args (no shell — patterns are passed verbatim)
     const excludeArgs = EXCLUDE_PATTERNS.map((p) => `--exclude=${p}`);
     if (!options.includeUploads) {
@@ -400,13 +402,15 @@ export async function executePush(params: SyncParams, deps: PullPushDeps): Promi
 
   const startedAt = Date.now();
 
-  const { localPublicPath, sshCommandForRsync, remoteHost } = rsyncSshContext(site, envInfo);
-
   // Once the remote DB import starts, a cancel/crash leaves the remote
   // database half-written — lets the catch block restore the remote backup.
   let remoteImportStarted = false;
 
   try {
+    // Derive paths/SSH target inside the try so a throw here can't leak the
+    // activeSyncs registration — the finally always unregisters.
+    const { localPublicPath, sshCommandForRsync, remoteHost } = rsyncSshContext(site, envInfo);
+
     const excludeArgs = EXCLUDE_PATTERNS.map((p) => `--exclude=${p}`);
     if (!options.includeUploads) {
       excludeArgs.push('--exclude=wp-content/uploads/');
