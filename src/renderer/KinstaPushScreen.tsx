@@ -681,12 +681,23 @@ const KinstaPushScreen: React.FC<Props> = ({ isOpen, onClose, site, siteLink }) 
                       >
                         brew install rsync
                       </code>
-                      <TextButton
+                      <button
+                        type="button"
                         onClick={copyBrewCommand}
-                        style={{ fontSize: '12px', padding: 0, height: 'auto', minWidth: 0 }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          margin: 0,
+                          font: 'inherit',
+                          lineHeight: 'inherit',
+                          color: '#fcc419',
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                        }}
                       >
                         {brewCopied ? 'Copied!' : 'Copy'}
-                      </TextButton>
+                      </button>
                       <span style={{ opacity: 0.3 }}>|</span>
                       <a
                         href={RSYNC_TROUBLESHOOTING_URL}
