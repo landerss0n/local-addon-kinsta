@@ -38,7 +38,11 @@ function describeStep(cmd: string, args: string[], opts: RunOptions): string {
   if (base === 'rsync') return 'rsync';
   if (base === 'mysqldump') return 'mysqldump';
   if (base === 'mysql') {
-    return (opts.stdinFile || '').includes('pre-pull-backup') ? 'mysql-restore' : 'mysql-import';
+    if ((opts.stdinFile || '').includes('pre-pull-backup')) return 'mysql-restore';
+    const sql = args[args.indexOf('-e') + 1] || '';
+    if (/^\s*SHOW TABLES/i.test(sql)) return 'mysql-show-tables';
+    if (/DROP TABLE/i.test(sql)) return 'mysql-drop-tables';
+    return 'mysql-import';
   }
   if (base === 'php') return args.includes('search-replace') ? 'local-search-replace' : 'php';
   if (base === 'scp') return 'scp';
@@ -47,6 +51,7 @@ function describeStep(cmd: string, args: string[], opts: RunOptions): string {
     if (remote.includes('wp db export') && remote.includes('pre-push-backup'))
       return 'remote-backup-export';
     if (remote.includes('wp db export')) return 'remote-db-export';
+    if (remote.includes('wp config get table_prefix')) return 'remote-config-prefix';
     if (remote.includes('wc -c')) return 'remote-backup-wc';
     if (remote.includes('wp db import') && remote.includes('pre-push-backup'))
       return 'remote-db-restore';
@@ -66,6 +71,11 @@ interface FakeRunnerConfig {
   stdoutBytes?: number;
   // What `wc -c < backup` reports on the remote (push backup size check).
   remoteBackupWc?: string;
+  // What `wp config get table_prefix` reports for the remote site (pull prefix
+  // reconciliation). Unset → empty → reconciliation is skipped.
+  remotePrefix?: string;
+  // What `SHOW TABLES` reports locally after the import (prefix reconciliation).
+  localTables?: string[];
 }
 
 interface RecordedCall {
@@ -98,6 +108,14 @@ function makeFakeRunner(cfg: FakeRunnerConfig = {}) {
     // Remote backup size check reads `wc -c` over stdout.
     if (step === 'remote-backup-wc' && opts.onStdout) {
       opts.onStdout(`${cfg.remoteBackupWc ?? '5000'}\n`);
+    }
+    // Remote table prefix lookup (pull reconciliation).
+    if (step === 'remote-config-prefix' && opts.onStdout) {
+      opts.onStdout(`${cfg.remotePrefix ?? ''}\n`);
+    }
+    // Local table list after import (pull reconciliation).
+    if (step === 'mysql-show-tables' && opts.onStdout) {
+      opts.onStdout(`${(cfg.localTables ?? []).join('\n')}\n`);
     }
     // mysqldump / wp db export to a local file → materialize a dump so the
     // size-check (isLikelyValidSqlDump) sees a real file.
@@ -266,6 +284,115 @@ describe('executePull', () => {
     expect(wpConfig).toContain("define('DB_HOST', 'localhost')");
     expect(wpConfig).not.toContain(socketPath);
     expect(deps.activeSyncs.size).toBe(0); // unregistered in finally
+  });
+
+  it('adopts the remote table prefix and drops stale local-prefix tables', async () => {
+    const wpConfigPath = path.join(sitePath, 'app', 'public', 'wp-config.php');
+    fs.writeFileSync(
+      wpConfigPath,
+      "<?php\ndefine('DB_HOST', 'localhost');\n$table_prefix = 'wp_';\n",
+    );
+
+    const { deps, calls } = makeDeps({
+      runner: makeFakeRunner({
+        remotePrefix: 'wp_pk_',
+        // After import: the imported production tables + the old local ones.
+        localTables: ['wp_options', 'wp_posts', 'wp_pk_options', 'wp_pk_posts'],
+      }),
+    });
+    const result = await executePull(pullParams(), deps);
+    expect(result.success).toBe(true);
+
+    const labels = steps(calls);
+    expect(labels).toContain('remote-config-prefix');
+    expect(labels).toContain('mysql-show-tables');
+    expect(labels).toContain('mysql-drop-tables');
+
+    // The drop targets only the stale old-prefix tables, never the imported ones.
+    const dropCall = calls.find((c) => c.step === 'mysql-drop-tables')!;
+    const dropSql = dropCall.args[dropCall.args.indexOf('-e') + 1];
+    expect(dropSql).toContain('`wp_options`');
+    expect(dropSql).toContain('`wp_posts`');
+    expect(dropSql).not.toContain('`wp_pk_options`');
+    expect(dropSql).not.toContain('`wp_pk_posts`');
+
+    // wp-config now points WordPress at the imported tables (persisted, not reverted).
+    const wpConfig = fs.readFileSync(wpConfigPath, 'utf8');
+    expect(wpConfig).toContain("$table_prefix = 'wp_pk_';");
+    expect(wpConfig).not.toContain(socketPath); // socket edit still reverted
+  });
+
+  it('leaves the prefix untouched when local and remote already match', async () => {
+    const wpConfigPath = path.join(sitePath, 'app', 'public', 'wp-config.php');
+    fs.writeFileSync(
+      wpConfigPath,
+      "<?php\ndefine('DB_HOST', 'localhost');\n$table_prefix = 'wp_';\n",
+    );
+
+    const { deps, calls } = makeDeps({
+      runner: makeFakeRunner({ remotePrefix: 'wp_', localTables: ['wp_options', 'wp_posts'] }),
+    });
+    const result = await executePull(pullParams(), deps);
+    expect(result.success).toBe(true);
+
+    const labels = steps(calls);
+    expect(labels).toContain('remote-config-prefix'); // prefix was checked
+    expect(labels).not.toContain('mysql-drop-tables'); // ...but nothing to reconcile
+    expect(fs.readFileSync(wpConfigPath, 'utf8')).toContain("$table_prefix = 'wp_';");
+  });
+
+  it('a failed remote prefix lookup is skipped, not rolled back', async () => {
+    const wpConfigPath = path.join(sitePath, 'app', 'public', 'wp-config.php');
+    fs.writeFileSync(
+      wpConfigPath,
+      "<?php\ndefine('DB_HOST', 'localhost');\n$table_prefix = 'wp_';\n",
+    );
+
+    const { deps, calls } = makeDeps({
+      runner: makeFakeRunner({ failAt: 'remote-config-prefix' }),
+    });
+    const result = await executePull(pullParams(), deps);
+
+    // The import succeeded — a prefix-check blip must not undo it.
+    expect(result.success).toBe(true);
+    const labels = steps(calls);
+    expect(labels).toContain('mysql-import');
+    expect(labels).not.toContain('mysql-restore'); // no rollback
+    expect(labels).not.toContain('mysql-drop-tables'); // reconciliation skipped
+  });
+
+  it('clears compiled Sage/Acorn caches after a pull, keeping the dirs + .gitkeep', async () => {
+    const theme = path.join(sitePath, 'app', 'public', 'wp-content', 'themes', 'pk');
+    const views = path.join(theme, 'storage', 'framework', 'views');
+    const cache = path.join(theme, 'storage', 'framework', 'cache');
+    const boot = path.join(theme, 'bootstrap', 'cache');
+    for (const d of [views, cache, boot]) fs.mkdirSync(d, { recursive: true });
+    // Compiled artifacts (baked production paths) — must be removed.
+    fs.writeFileSync(path.join(views, 'a1b2c3.php'), '<?php /* /www/prod/... */');
+    fs.writeFileSync(path.join(cache, 'config.php'), "<?php return ['base'=>'/www/prod'];");
+    fs.writeFileSync(path.join(boot, 'packages.php'), '<?php return [];');
+    // Non-.php scaffolding — must be kept so the dir still exists for Acorn.
+    fs.writeFileSync(path.join(cache, '.gitkeep'), '');
+    fs.writeFileSync(path.join(cache, '.gitignore'), '*');
+
+    const { deps } = makeDeps();
+    const result = await executePull(pullParams(), deps);
+    expect(result.success).toBe(true);
+
+    expect(fs.existsSync(path.join(views, 'a1b2c3.php'))).toBe(false);
+    expect(fs.existsSync(path.join(cache, 'config.php'))).toBe(false);
+    expect(fs.existsSync(path.join(boot, 'packages.php'))).toBe(false);
+    // dirs + non-php scaffolding survive
+    expect(fs.existsSync(cache)).toBe(true);
+    expect(fs.existsSync(path.join(cache, '.gitkeep'))).toBe(true);
+    expect(fs.existsSync(path.join(cache, '.gitignore'))).toBe(true);
+  });
+
+  it('cache clear is a no-op (and pull still succeeds) for a non-Sage site', async () => {
+    // beforeEach's wp-config has no theme/storage dirs at all.
+    const { deps } = makeDeps();
+    const result = await executePull(pullParams(), deps);
+    expect(result.success).toBe(true);
   });
 
   it('import failure rolls back the local DB from the pre-pull backup', async () => {

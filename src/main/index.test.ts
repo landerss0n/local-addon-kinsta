@@ -22,6 +22,9 @@ import {
   parseVerboseDryRun,
   safeRemoteRelPath,
   buildPushRsyncArgs,
+  parseTablePrefix,
+  setTablePrefix,
+  normalizeTablePrefix,
 } from './index';
 
 const env = (overrides: Partial<EnvironmentInfo> = {}): EnvironmentInfo => ({
@@ -150,7 +153,7 @@ describe('rsync progress', () => {
   };
 
   it('picks the best progress flag per rsync flavor', () => {
-    expect(rsyncProgressArgs(gnu)).toEqual(['--info=progress2']);
+    expect(rsyncProgressArgs(gnu)).toEqual(['--info=progress2', '--no-inc-recursive']);
     expect(rsyncProgressArgs(openrsync)).toEqual(['--progress']);
     expect(rsyncProgressArgs(ancient)).toEqual([]);
   });
@@ -209,6 +212,40 @@ describe('searchReplacePairs', () => {
     // JSON-encoded URLs (e.g. block attributes, plugin settings) store slashes escaped
     expect('https:\\/\\/a.com'.includes(escapedFrom)).toBe(true);
     expect('http:\\/\\/a.com'.includes(escapedFrom)).toBe(true);
+  });
+});
+
+describe('table prefix helpers', () => {
+  const cfg = (prefix: string) =>
+    `<?php\ndefine('DB_NAME', 'local');\n$table_prefix = '${prefix}';\nrequire ABSPATH;\n`;
+
+  it('parses the table prefix from wp-config', () => {
+    expect(parseTablePrefix(cfg('wp_'))).toBe('wp_');
+    expect(parseTablePrefix(cfg('wp_pk_'))).toBe('wp_pk_');
+    expect(parseTablePrefix('$table_prefix = "wp_dq_";')).toBe('wp_dq_'); // double quotes
+    expect(parseTablePrefix("$table_prefix='nospace_';")).toBe('nospace_'); // no spaces
+  });
+
+  it('returns null when there is no table prefix line', () => {
+    expect(parseTablePrefix("<?php\ndefine('DB_HOST', 'localhost');\n")).toBeNull();
+  });
+
+  it('rewrites the prefix while preserving quote style and surrounding code', () => {
+    const out = setTablePrefix(cfg('wp_'), 'wp_pk_');
+    expect(out).toContain("$table_prefix = 'wp_pk_';");
+    expect(out).toContain("define('DB_NAME', 'local')"); // rest untouched
+    expect(parseTablePrefix(out)).toBe('wp_pk_');
+    // round-trips through a value that contains a literal $ safely
+    expect(parseTablePrefix(setTablePrefix(cfg('wp_'), 'wp_x_'))).toBe('wp_x_');
+  });
+
+  it('normalizes/validates the remote `wp config get table_prefix` output', () => {
+    expect(normalizeTablePrefix('wp_pk_\n')).toBe('wp_pk_'); // trailing newline trimmed
+    expect(normalizeTablePrefix('  wp_  ')).toBe('wp_');
+    expect(normalizeTablePrefix('')).toBeNull();
+    expect(normalizeTablePrefix('wp_; DROP TABLE x')).toBeNull(); // injection rejected
+    expect(normalizeTablePrefix('wp-bad')).toBeNull(); // hyphen not allowed
+    expect(normalizeTablePrefix('a'.repeat(65))).toBeNull(); // absurdly long
   });
 });
 
@@ -436,5 +473,12 @@ describe('EXCLUDE_PATTERNS', () => {
 
   it('does NOT exclude uploads (that is a per-sync option)', () => {
     expect(EXCLUDE_PATTERNS.some((p) => p.includes('uploads'))).toBe(false);
+  });
+
+  it('does NOT blanket-exclude cache/ (would strip Sage/Acorn storage/framework/cache)', () => {
+    // A bare 'cache/' matches at any depth and breaks Roots/Acorn themes; the
+    // page-cache exclude must be anchored to wp-content/cache.
+    expect(EXCLUDE_PATTERNS).not.toContain('cache/');
+    expect(EXCLUDE_PATTERNS).toContain('wp-content/cache/');
   });
 });

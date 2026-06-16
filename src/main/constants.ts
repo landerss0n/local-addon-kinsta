@@ -15,7 +15,11 @@ export const EXCLUDE_PATTERNS = [
   '*.log',
   '.env',
   '.sass-cache/',
-  'cache/',
+  // Anchor the page-cache exclude to wp-content/cache (W3TC/WP-Super-Cache/etc.).
+  // A blanket 'cache/' matches at ANY depth and strips wp-content/themes/<sage>/
+  // storage/framework/cache — which Roots/Acorn (Sage) themes REQUIRE to exist,
+  // so the pulled site fatals to a blank page. (Bedrock/Laravel themes likewise.)
+  'wp-content/cache/',
   '.cache/',
   '/vendor/',
   '*.sql',

@@ -134,7 +134,13 @@ export interface SyncResult {
 export interface PullPushDeps {
   fs: Pick<
     typeof fs,
-    'existsSync' | 'statSync' | 'readFileSync' | 'writeFileSync' | 'copyFileSync' | 'unlinkSync'
+    | 'existsSync'
+    | 'statSync'
+    | 'readFileSync'
+    | 'writeFileSync'
+    | 'copyFileSync'
+    | 'unlinkSync'
+    | 'readdirSync'
   >;
   runCommand: (
     sync: ActiveSync,

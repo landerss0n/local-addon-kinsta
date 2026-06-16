@@ -7,6 +7,9 @@ import {
   isLikelyValidSqlDump,
   isValidDomain,
   searchReplacePairs,
+  parseTablePrefix,
+  setTablePrefix,
+  normalizeTablePrefix,
 } from './validators';
 import {
   sshArgs,
@@ -23,6 +26,64 @@ import {
 // integration-tested with injected seams — no real processes, network, or
 // Local installation lookups). The handlers are thin wrappers around these.
 // ---------------------------------------------------------------------------
+
+// Sage/Acorn (and other Laravel-based) themes COMPILE their Blade views and
+// CACHE their config/services/packages with ABSOLUTE paths baked in. Pulled
+// from production, those paths point at the remote (`/www/<install>/...`), so
+// Acorn looks for assets/manifests in the wrong place and the local site
+// renders blank ("manifest cannot be found" / "storage/framework/cache must be
+// present"). These compiled artifacts are disposable — the framework rebuilds
+// them locally on demand — so after a pull we delete the compiled `*.php` files
+// while KEEPING the directories (Acorn requires storage/framework/cache to
+// exist) and any `.gitkeep`/`.gitignore`. No-op for non-Sage sites (the dirs
+// just aren't there). Returns the number of files removed.
+const COMPILED_CACHE_RELDIRS = [
+  path.join('storage', 'framework', 'views'),
+  path.join('storage', 'framework', 'cache'),
+  path.join('bootstrap', 'cache'),
+];
+
+export function clearCompiledFrameworkCaches(
+  localPublicPath: string,
+  dfs: PullPushDeps['fs'],
+): number {
+  const themesDir = path.join(localPublicPath, 'wp-content', 'themes');
+  if (!dfs.existsSync(themesDir)) return 0;
+
+  let themes: string[];
+  try {
+    themes = dfs.readdirSync(themesDir) as string[];
+  } catch {
+    return 0;
+  }
+
+  let removed = 0;
+  for (const theme of themes) {
+    for (const rel of COMPILED_CACHE_RELDIRS) {
+      const dir = path.join(themesDir, theme, rel);
+      if (!dfs.existsSync(dir)) continue;
+      let entries: string[];
+      try {
+        entries = dfs.readdirSync(dir) as string[];
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        if (!entry.endsWith('.php')) continue; // keep .gitkeep/.gitignore + data/
+        const file = path.join(dir, entry);
+        try {
+          if (dfs.statSync(file).isFile()) {
+            dfs.unlinkSync(file);
+            removed++;
+          }
+        } catch {
+          /* best-effort: a file vanishing mid-clear is fine */
+        }
+      }
+    }
+  }
+  return removed;
+}
 
 export async function executePull(params: SyncParams, deps: PullPushDeps): Promise<SyncResult> {
   const { localSiteId, site, envInfo, options } = params;
@@ -212,6 +273,9 @@ export async function executePull(params: SyncParams, deps: PullPushDeps): Promi
       const wpConfigPath = path.join(localPublicPath, 'wp-config.php');
       const wpConfigBackupPath = wpConfigPath + '.kinsta-sync-bak';
       let wpConfigBackup: string | null = null;
+      // The local table prefix, read before the temporary socket edit, so we can
+      // reconcile it against production's after the import (see below).
+      let localPrefix: string | null = null;
 
       try {
         // Restore from backup if exists (previous crash)
@@ -221,6 +285,7 @@ export async function executePull(params: SyncParams, deps: PullPushDeps): Promi
         }
 
         wpConfigBackup = dfs.readFileSync(wpConfigPath, 'utf8');
+        localPrefix = parseTablePrefix(wpConfigBackup);
         dfs.writeFileSync(wpConfigBackupPath, wpConfigBackup);
 
         const wpConfigModified = wpConfigBackup.replace(
@@ -281,6 +346,95 @@ export async function executePull(params: SyncParams, deps: PullPushDeps): Promi
         }
       }
 
+      // Reconcile the table prefix. `wp db export` carries production's table
+      // prefix; if it differs from the local wp-config's, WordPress keeps reading
+      // the old (now empty) local tables and the freshly-pulled data is invisible.
+      // We adopt the remote prefix locally and drop the stale old-prefix tables.
+      // The remote prefix is read authoritatively from the remote wp-config (NOT
+      // inferred from local tables — stale tables from a previous prefix would
+      // mislead detection and risk dropping the wrong set).
+      if (localPrefix) {
+        let remotePrefix: string | null = null;
+        try {
+          let remotePrefixRaw = '';
+          await run(sync, 'ssh', sshArgs(envInfo, 'cd ~/public && wp config get table_prefix'), {
+            onStdout: (c) => {
+              remotePrefixRaw += c;
+            },
+          });
+          remotePrefix = normalizeTablePrefix(remotePrefixRaw);
+        } catch (e: any) {
+          // A prefix-lookup blip must not roll back a successful import — skip
+          // reconciliation instead. (Still honor an in-flight cancellation.)
+          if (e instanceof CancelledError) throw e;
+          console.warn(
+            '[Kinsta] Could not read remote table prefix; skipping prefix reconciliation:',
+            e?.message,
+          );
+        }
+
+        if (remotePrefix && remotePrefix !== localPrefix) {
+          let tablesRaw = '';
+          await run(
+            sync,
+            mysqlBin,
+            [
+              `-u${db.user}`,
+              `-p${db.password}`,
+              `--socket=${socketPath}`,
+              db.database,
+              '-N',
+              '-e',
+              'SHOW TABLES',
+            ],
+            {
+              onStdout: (c) => {
+                tablesRaw += c;
+              },
+            },
+          );
+          const allTables = tablesRaw
+            .split('\n')
+            .map((t) => t.trim())
+            .filter(Boolean);
+          const keep = allTables.filter((t) => t.startsWith(remotePrefix));
+          const stale = allTables.filter((t) => !t.startsWith(remotePrefix));
+
+          // Safety: only act when the import really produced the adopted-prefix
+          // tables — never repoint wp-config at a prefix with no tables, and
+          // never risk nuking the whole database on an unexpected table list.
+          if (keep.length > 0) {
+            sendProgress({
+              stage: 'search-replace',
+              progress: 97,
+              message: `Adopting table prefix ${remotePrefix}...`,
+            });
+
+            // 1. Drop the stale old-prefix tables.
+            if (stale.length > 0) {
+              const dropSql =
+                'SET FOREIGN_KEY_CHECKS=0;' +
+                stale.map((t) => ` DROP TABLE IF EXISTS \`${t.replace(/`/g, '``')}\`;`).join('') +
+                ' SET FOREIGN_KEY_CHECKS=1;';
+              await run(sync, mysqlBin, [
+                `-u${db.user}`,
+                `-p${db.password}`,
+                `--socket=${socketPath}`,
+                db.database,
+                '-e',
+                dropSql,
+              ]);
+            }
+
+            // 2. Point wp-config at the imported tables LAST: until this write
+            //    WordPress still reads the local prefix, so a failure before it
+            //    (with the DB rolled back by the catch) leaves a consistent site.
+            const cfg = dfs.readFileSync(wpConfigPath, 'utf8');
+            dfs.writeFileSync(wpConfigPath, setTablePrefix(cfg, remotePrefix));
+          }
+        }
+      }
+
       // Cleanup (keep the pre-pull backup until the next pull)
       try {
         dfs.unlinkSync(dbDumpPath);
@@ -288,6 +442,19 @@ export async function executePull(params: SyncParams, deps: PullPushDeps): Promi
       } catch (e: any) {
         console.warn('[Kinsta] Temp dump cleanup failed (non-fatal):', e?.message);
       }
+    }
+
+    // Clear compiled Sage/Acorn caches that bake absolute production paths (see
+    // clearCompiledFrameworkCaches). Runs for every pull — the compiled views
+    // are files, synced regardless of the database option — and is best-effort:
+    // a failure here must never fail an otherwise-complete pull.
+    try {
+      const cleared = clearCompiledFrameworkCaches(localPublicPath, dfs);
+      if (cleared > 0) {
+        console.log(`[Kinsta] Cleared ${cleared} compiled theme cache file(s) after pull`);
+      }
+    } catch (e: any) {
+      console.warn('[Kinsta] Framework cache clear failed (non-fatal):', e?.message);
     }
 
     deps.recordSync(localSiteId, 'pull', envInfo.envType, Date.now() - startedAt);

@@ -76,6 +76,37 @@ export function getDbCredentials(site: SiteInfo): {
   };
 }
 
+// The WordPress table prefix lives in wp-config.php as `$table_prefix = 'wp_';`.
+// A pulled production dump carries production's prefix; when it differs from the
+// local site's, WordPress keeps reading the old (now empty) local tables and the
+// pulled data is invisible. We read the local prefix (to compare) and rewrite it
+// (to adopt the remote prefix so WordPress reads the imported tables).
+const TABLE_PREFIX_RE = /(\$table_prefix\s*=\s*)(['"])([^'"]*)\2(\s*;)/;
+
+export function parseTablePrefix(wpConfig: string): string | null {
+  const m = wpConfig.match(TABLE_PREFIX_RE);
+  return m ? m[3] : null;
+}
+
+export function setTablePrefix(wpConfig: string, prefix: string): string {
+  // Replacement function (not a string) so a prefix containing `$` can never be
+  // mis-parsed as a capture-group reference.
+  return wpConfig.replace(
+    TABLE_PREFIX_RE,
+    (_m, pre, q, _old, post) => `${pre}${q}${prefix}${q}${post}`,
+  );
+}
+
+// `wp config get table_prefix` returns the bare value plus a trailing newline.
+// Validate strictly before it reaches wp-config.php or a DROP TABLE loop — a
+// WordPress prefix is letters, digits and underscores only.
+export function normalizeTablePrefix(raw: string): string | null {
+  const v = (raw || '').trim();
+  if (!v || v.length > 64) return null;
+  if (!/^[A-Za-z0-9_]+$/.test(v)) return null;
+  return v;
+}
+
 // WP-CLI search-replace passes covering https, http, and protocol-relative URLs.
 // The final pass handles the JSON-escaped slash form (`\/\/domain`) that appears
 // when URLs are stored inside JSON — Gutenberg block attributes, plugin settings,

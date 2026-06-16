@@ -98,7 +98,18 @@ export function resolveRsync(): RsyncInfo {
 }
 
 export function rsyncProgressArgs(rsync: RsyncInfo): string[] {
-  if (rsync.supportsProgress2) return ['--info=progress2'];
+  // --info=progress2 reports the OVERALL percentage, but rsync's default
+  // incremental recursion streams the file list while it transfers, so the
+  // byte total it divides by keeps growing as more of the tree is discovered.
+  // That makes the percentage non-monotonic: it shoots up early (e.g. 95% when
+  // only one subdir is known) then drops back (27%) once the rest of wp-content
+  // is scanned. --no-inc-recursive builds the complete file list up front so
+  // the denominator is final from the first byte and the percentage only rises.
+  // (--no-inc-recursive exists in GNU rsync >= 3.0 and progress2 in >= 3.1, so
+  // progress2 support guarantees the flag is available; openrsync/2.6.9 get
+  // neither.) The trade-off is a brief pause before transfer while the list is
+  // built — well worth a progress bar that doesn't jump backwards.
+  if (rsync.supportsProgress2) return ['--info=progress2', '--no-inc-recursive'];
   if (rsync.supportsProgress) return ['--progress'];
   return [];
 }
