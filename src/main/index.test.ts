@@ -25,6 +25,8 @@ import {
   parseTablePrefix,
   setTablePrefix,
   normalizeTablePrefix,
+  rsyncSshContext,
+  downgradeMySQL8Collations,
 } from './index';
 
 const env = (overrides: Partial<EnvironmentInfo> = {}): EnvironmentInfo => ({
@@ -89,9 +91,30 @@ describe('sshArgs', () => {
       '12345',
       '-o',
       'StrictHostKeyChecking=accept-new',
+      '-o',
+      'ServerAliveInterval=60',
+      '-o',
+      'ServerAliveCountMax=120',
       'gbdbutik@35.1.2.3',
       'wp db export /tmp/x.sql',
     ]);
+  });
+
+  it('keeps the SSH connection alive on long syncs (keepalive)', () => {
+    // A long mysqldump/import or a big rsync can idle the channel long enough
+    // for a NAT/firewall to drop it. ServerAlive* makes ssh probe the peer.
+    const args = sshArgs(env(), 'wp db export /tmp/x.sql');
+    expect(args).toContain('ServerAliveInterval=60');
+    expect(args).toContain('ServerAliveCountMax=120');
+  });
+});
+
+describe('rsyncSshContext', () => {
+  it('applies the same SSH keepalive to the rsync transport', () => {
+    const { sshCommandForRsync } = rsyncSshContext({ path: '/tmp/site' } as any, env());
+    expect(sshCommandForRsync).toContain('-o ServerAliveInterval=60');
+    expect(sshCommandForRsync).toContain('-o ServerAliveCountMax=120');
+    expect(sshCommandForRsync).toContain('-p 12345');
   });
 });
 
@@ -457,6 +480,44 @@ describe('isTransientApiError', () => {
   });
 });
 
+describe('downgradeMySQL8Collations', () => {
+  // Local ships MySQL 8.x, whose default utf8mb4 collation is utf8mb4_0900_*.
+  // Kinsta runs MariaDB, which doesn't know those collations → `wp db import`
+  // fails with "Unknown collation". Rewrite them to a widely-supported one.
+  it('rewrites the MySQL 8 default collation in CREATE TABLE (COLLATE=)', () => {
+    const sql =
+      'CREATE TABLE `wp_posts` (...) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;';
+    expect(downgradeMySQL8Collations(sql)).toBe(
+      'CREATE TABLE `wp_posts` (...) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;',
+    );
+  });
+
+  it('rewrites the column-level form (COLLATE <name>)', () => {
+    const sql = '`name` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL';
+    expect(downgradeMySQL8Collations(sql)).toBe(
+      '`name` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NOT NULL',
+    );
+  });
+
+  it('covers the whole utf8mb4_0900_* family (e.g. accent/case-sensitive)', () => {
+    expect(downgradeMySQL8Collations('COLLATE=utf8mb4_0900_as_cs')).toBe(
+      'COLLATE=utf8mb4_unicode_520_ci',
+    );
+  });
+
+  it('rewrites every occurrence', () => {
+    const sql = 'a utf8mb4_0900_ai_ci b utf8mb4_0900_ai_ci';
+    expect(downgradeMySQL8Collations(sql)).toBe(
+      'a utf8mb4_unicode_520_ci b utf8mb4_unicode_520_ci',
+    );
+  });
+
+  it('leaves already-compatible collations untouched', () => {
+    const sql = 'COLLATE=utf8mb4_unicode_ci ... COLLATE utf8mb4_general_ci';
+    expect(downgradeMySQL8Collations(sql)).toBe(sql);
+  });
+});
+
 describe('EXCLUDE_PATTERNS', () => {
   it('protects host-specific and dangerous files', () => {
     for (const required of [
@@ -466,6 +527,11 @@ describe('EXCLUDE_PATTERNS', () => {
       'node_modules/',
       'wp-content/mu-plugins/kinsta-mu-plugins/',
       'local-xdebuginfo.php',
+      // Host-specific persistent-cache drop-ins: object-cache.php points at the
+      // host's Redis/Memcached, advanced-cache.php at its page cache. Syncing
+      // either way would point one host at the other's cache backend.
+      'wp-content/object-cache.php',
+      'wp-content/advanced-cache.php',
     ]) {
       expect(EXCLUDE_PATTERNS).toContain(required);
     }

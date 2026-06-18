@@ -1,7 +1,4 @@
 import * as React from 'react';
-// Resolves to Local's shared react-router-dom at runtime (module-alias +
-// webpack external) — required so our Route works inside Local's <Switch>.
-import { Route } from 'react-router-dom';
 import { AddonRendererContext, AddonSettingsItem } from '@getflywheel/local/renderer';
 import { KinstaDrawerHost } from './KinstaSitePanel';
 import KinstaPage from './KinstaPage';
@@ -10,6 +7,16 @@ import KinstaSettings from './KinstaSettings';
 
 export default function (context: AddonRendererContext): void {
   const { hooks, events } = context;
+  // Use Local's own react-router-dom (exposed on the context) instead of
+  // importing the package. The add-on bundle is loaded by a plain Node
+  // require() from the installed add-on directory — outside Local's app.asar —
+  // so a bare `import 'react-router-dom'` (webpack external) would be an
+  // unresolvable `require("react-router-dom")` on a clean install (it's a
+  // devDependency only, not shipped in the .tgz) → MODULE_NOT_FOUND at load →
+  // no hooks register → no UI. context.ReactRouter.Route is the version-matched
+  // component Local already uses for its <Switch>.
+  // (ReactRouter is typed Partial<…>; Local's loader always provides Route.)
+  const Route = context.ReactRouter.Route!;
 
   // Invisible host for the link/sync drawers.
   // Mounted in the tab nav so it exists on every site tab (renders no toolbar UI).

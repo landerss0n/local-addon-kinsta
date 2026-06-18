@@ -97,6 +97,18 @@ export function setTablePrefix(wpConfig: string, prefix: string): string {
   );
 }
 
+// Local ships MySQL 8.x, whose default utf8mb4 collation family is
+// `utf8mb4_0900_*` (ai_ci, as_cs, …). Kinsta runs MariaDB, which has no 0900
+// collations, so importing a Local dump fails with "Unknown collation
+// 'utf8mb4_0900_ai_ci'". Rewrite the whole family to utf8mb4_unicode_520_ci
+// (the same target WP Engine's Magic Sync uses) before pushing — it is
+// understood by both MariaDB and MySQL 5.7+. The charset (utf8mb4) is fine on
+// both, so only the collation token is rewritten; covers both the
+// `COLLATE=<name>` (CREATE TABLE) and `COLLATE <name>` (column) forms.
+export function downgradeMySQL8Collations(sql: string): string {
+  return sql.replace(/utf8mb4_0900_\w+/g, 'utf8mb4_unicode_520_ci');
+}
+
 // `wp config get table_prefix` returns the bare value plus a trailing newline.
 // Validate strictly before it reaches wp-config.php or a DROP TABLE loop — a
 // WordPress prefix is letters, digits and underscores only.

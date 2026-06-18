@@ -48,10 +48,13 @@ function describeStep(cmd: string, args: string[], opts: RunOptions): string {
   if (base === 'scp') return 'scp';
   if (base === 'ssh') {
     const remote = args[args.length - 1] || '';
-    if (remote.includes('wp db export') && remote.includes('pre-push-backup'))
+    // Match 'db export' (not 'wp db export') so inserted global flags like
+    // --skip-plugins/--skip-themes between `wp` and the subcommand don't break it.
+    if (remote.includes('db export') && remote.includes('pre-push-backup'))
       return 'remote-backup-export';
-    if (remote.includes('wp db export')) return 'remote-db-export';
+    if (remote.includes('db export')) return 'remote-db-export';
     if (remote.includes('wp config get table_prefix')) return 'remote-config-prefix';
+    if (remote.includes('config set table_prefix')) return 'remote-config-set-prefix';
     if (remote.includes('wc -c')) return 'remote-backup-wc';
     if (remote.includes('wp db import') && remote.includes('pre-push-backup'))
       return 'remote-db-restore';
@@ -76,6 +79,9 @@ interface FakeRunnerConfig {
   remotePrefix?: string;
   // What `SHOW TABLES` reports locally after the import (prefix reconciliation).
   localTables?: string[];
+  // SQL written to any stdoutFile (e.g. the local mysqldump on push) instead of
+  // filler bytes — lets a test assert transforms applied to the dump.
+  pushDumpSql?: string;
 }
 
 interface RecordedCall {
@@ -87,11 +93,22 @@ interface RecordedCall {
 
 function makeFakeRunner(cfg: FakeRunnerConfig = {}) {
   const calls: RecordedCall[] = [];
+  // Records the on-disk content of each scp source at upload time — so a test
+  // can assert what would actually land on Kinsta (after any local transform).
+  const uploads: { src: string; content: string }[] = [];
   const run = async (sync: ActiveSync, cmd: string, args: string[], opts: RunOptions = {}) => {
     // Faithful to runCommand's contract: a cancelled sync rejects everything.
     if (sync.cancelled) throw new CancelledError();
     const step = describeStep(cmd, args, opts);
     calls.push({ step, cmd, args, opts });
+
+    // Capture what scp would upload (source is the second-to-last arg).
+    if (step === 'scp') {
+      const src = args[args.length - 2];
+      try {
+        uploads.push({ src, content: fs.readFileSync(src, 'utf8') });
+      } catch {}
+    }
 
     if (cfg.cancelAt === step) {
       sync.cancelled = true;
@@ -120,11 +137,11 @@ function makeFakeRunner(cfg: FakeRunnerConfig = {}) {
     // mysqldump / wp db export to a local file → materialize a dump so the
     // size-check (isLikelyValidSqlDump) sees a real file.
     if (opts.stdoutFile) {
-      fs.writeFileSync(opts.stdoutFile, 'x'.repeat(cfg.stdoutBytes ?? 500));
+      fs.writeFileSync(opts.stdoutFile, cfg.pushDumpSql ?? 'x'.repeat(cfg.stdoutBytes ?? 500));
     }
     return { code: 0, stderr: '' };
   };
-  return { run, calls };
+  return { run, calls, uploads };
 }
 
 const steps = (calls: RecordedCall[]) => calls.map((c) => c.step);
@@ -255,6 +272,28 @@ const pushParams = (
 });
 
 // ---------------------------------------------------------------------------
+
+describe('wp db export hardening (#2)', () => {
+  it('runs the remote DB exports with --skip-plugins --skip-themes', async () => {
+    // A broken/heavy plugin must not be able to break the remote DB export that
+    // backs the pull, nor the pre-push export that is our rollback safety net.
+    const pull = makeDeps();
+    await executePull(pullParams(), pull.deps);
+    const pullExport = pull.calls.find((c) => c.step === 'remote-db-export');
+    expect(pullExport).toBeDefined();
+    const pullCmd = pullExport!.args[pullExport!.args.length - 1];
+    expect(pullCmd).toContain('--skip-plugins');
+    expect(pullCmd).toContain('--skip-themes');
+
+    const push = makeDeps();
+    await executePush(pushParams(), push.deps);
+    const backupExport = push.calls.find((c) => c.step === 'remote-backup-export');
+    expect(backupExport).toBeDefined();
+    const backupCmd = backupExport!.args[backupExport!.args.length - 1];
+    expect(backupCmd).toContain('--skip-plugins');
+    expect(backupCmd).toContain('--skip-themes');
+  });
+});
 
 describe('executePull', () => {
   it('happy path: files + DB + search-replace, records + notifies success', async () => {
@@ -542,6 +581,54 @@ describe('executePush', () => {
     expect(notify).toHaveBeenCalledWith('Kinsta Sync', expect.stringContaining('Push complete'));
     expect(progress.some((p) => p.stage === 'done' && p.progress === 100)).toBe(true);
     expect(deps.activeSyncs.size).toBe(0);
+  });
+
+  it('downgrades MySQL 8 collations in the dump before uploading to Kinsta (MariaDB)', async () => {
+    // Local (MySQL 8) emits utf8mb4_0900_* collations MariaDB can't import.
+    const runner = makeFakeRunner({
+      pushDumpSql:
+        'CREATE TABLE `wp_posts` (`id` bigint) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;\n',
+    });
+    const { deps } = makeDeps({ runner });
+
+    const result = await executePush(pushParams(), deps);
+    expect(result.success).toBe(true);
+
+    const upload = runner.uploads.find((u) => u.src.endsWith('-local.sql'));
+    expect(upload).toBeDefined();
+    expect(upload!.content).toContain('utf8mb4_unicode_520_ci');
+    expect(upload!.content).not.toContain('utf8mb4_0900_ai_ci');
+  });
+
+  it('reconciles the remote table_prefix to match Local when they differ', async () => {
+    // Pushing a wp_-prefixed local DB into a wp_pk_-prefixed production would
+    // leave the imported data invisible (remote wp-config still reads wp_pk_).
+    fs.writeFileSync(
+      path.join(sitePath, 'app', 'public', 'wp-config.php'),
+      "<?php\ndefine('DB_HOST', 'localhost');\n$table_prefix = 'wp_';\n",
+    );
+    const { deps, calls } = makeDeps({ runner: makeFakeRunner({ remotePrefix: 'wp_pk_' }) });
+
+    const result = await executePush(pushParams(), deps);
+    expect(result.success).toBe(true);
+
+    const setPrefix = calls.find((c) => c.step === 'remote-config-set-prefix');
+    expect(setPrefix).toBeDefined();
+    // The remote prefix is set to the LOCAL prefix (what the imported data uses).
+    expect(setPrefix!.args[setPrefix!.args.length - 1]).toContain('table_prefix');
+    expect(setPrefix!.args[setPrefix!.args.length - 1]).toContain('wp_');
+  });
+
+  it('skips the table_prefix reconcile when local and remote already match', async () => {
+    fs.writeFileSync(
+      path.join(sitePath, 'app', 'public', 'wp-config.php'),
+      "<?php\ndefine('DB_HOST', 'localhost');\n$table_prefix = 'wp_';\n",
+    );
+    const { deps, calls } = makeDeps({ runner: makeFakeRunner({ remotePrefix: 'wp_' }) });
+
+    const result = await executePush(pushParams(), deps);
+    expect(result.success).toBe(true);
+    expect(steps(calls)).not.toContain('remote-config-set-prefix');
   });
 
   it('import failure rolls back the remote DB from the pre-push backup', async () => {

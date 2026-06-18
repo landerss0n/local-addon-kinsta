@@ -33,6 +33,12 @@ export const EXCLUDE_PATTERNS = [
   '.user.ini',
   'wp-content/mu-plugins/kinsta-mu-plugins/',
   'wp-content/mu-plugins/kinsta-mu-plugins.php',
+  // Host-specific persistent-cache drop-ins. object-cache.php wires WordPress to
+  // the host's Redis/Memcached, advanced-cache.php to its page-cache engine —
+  // both are provisioned per host. Syncing either way would point one host at
+  // the other's (unreachable) cache backend and break caching / fatal the site.
+  'wp-content/object-cache.php',
+  'wp-content/advanced-cache.php',
   // Local-generated helper file in the webroot — never part of the WP site
   'local-xdebuginfo.php',
 ];

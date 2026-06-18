@@ -10,6 +10,7 @@ import {
   parseTablePrefix,
   setTablePrefix,
   normalizeTablePrefix,
+  downgradeMySQL8Collations,
 } from './validators';
 import {
   sshArgs,
@@ -228,7 +229,14 @@ export async function executePull(params: SyncParams, deps: PullPushDeps): Promi
         progress: 58,
         message: 'Exporting database from Kinsta...',
       });
-      await run(sync, 'ssh', sshArgs(envInfo, `cd ~/public && wp db export ${remoteDbPath}`));
+      await run(
+        sync,
+        'ssh',
+        sshArgs(
+          envInfo,
+          `cd ~/public && wp --skip-plugins --skip-themes db export ${remoteDbPath}`,
+        ),
+      );
 
       sendProgress({ stage: 'database', progress: 65, message: 'Downloading database...' });
       await run(sync, 'scp', [
@@ -618,7 +626,14 @@ export async function executePush(params: SyncParams, deps: PullPushDeps): Promi
     // 1b. Safety net for the automatic rollback: export the remote database.
     //     Stored in the remote home dir (outside ~/public, not web-accessible).
     sendProgress({ stage: 'backup', progress: 6, message: 'Backing up remote database...' });
-    await run(sync, 'ssh', sshArgs(envInfo, `cd ~/public && wp db export ${REMOTE_PUSH_BACKUP}`));
+    await run(
+      sync,
+      'ssh',
+      sshArgs(
+        envInfo,
+        `cd ~/public && wp --skip-plugins --skip-themes db export ${REMOTE_PUSH_BACKUP}`,
+      ),
+    );
 
     // Verify the remote backup is non-empty before touching anything — the
     // automatic rollback restores from this exact file. Abort if it looks bad
@@ -733,6 +748,14 @@ export async function executePush(params: SyncParams, deps: PullPushDeps): Promi
         { stdoutFile: dbDumpPath },
       );
 
+      // Local ships MySQL 8.x → the dump carries utf8mb4_0900_* collations that
+      // Kinsta's MariaDB can't import ("Unknown collation"). Rewrite them in
+      // place before upload so the import succeeds. No-op for dumps without them.
+      dfs.writeFileSync(
+        dbDumpPath,
+        downgradeMySQL8Collations(dfs.readFileSync(dbDumpPath, 'utf8')),
+      );
+
       sendProgress({ stage: 'database', progress: 65, message: 'Uploading database...' });
       await run(sync, 'scp', [
         '-P',
@@ -777,6 +800,55 @@ export async function executePush(params: SyncParams, deps: PullPushDeps): Promi
             envInfo,
             `cd ~/public && wp search-replace '${from}' '${to}' --all-tables --skip-columns=guid${networkFlag}`,
           ),
+        );
+      }
+
+      // Reconcile the remote table prefix (symmetric with the pull side). The
+      // pushed dump carries the LOCAL prefix; if Kinsta's wp-config uses a
+      // different one, WordPress there keeps reading the old (now stale) tables
+      // and the pushed data is invisible. Read both authoritatively and, if they
+      // differ, repoint the remote wp-config. Non-fatal: a failed lookup/set must
+      // not roll back an otherwise-successful push (the import already landed) —
+      // we surface a notice instead, mirroring the pull-side handling.
+      try {
+        const localPrefix = normalizeTablePrefix(
+          parseTablePrefix(dfs.readFileSync(path.join(localPublicPath, 'wp-config.php'), 'utf8')) ||
+            '',
+        );
+        // Only look up the remote prefix if we know the local one to compare it
+        // against — otherwise the round trip is wasted.
+        let remotePrefix: string | null = null;
+        if (localPrefix) {
+          let remotePrefixRaw = '';
+          await run(sync, 'ssh', sshArgs(envInfo, 'cd ~/public && wp config get table_prefix'), {
+            onStdout: (c: string) => (remotePrefixRaw += c),
+          });
+          remotePrefix = normalizeTablePrefix(remotePrefixRaw);
+        }
+        if (localPrefix && remotePrefix && localPrefix !== remotePrefix) {
+          sendProgress({
+            stage: 'search-replace',
+            progress: 96,
+            message: `Updating remote table prefix to ${localPrefix}...`,
+          });
+          await run(
+            sync,
+            'ssh',
+            sshArgs(
+              envInfo,
+              `cd ~/public && wp --skip-plugins --skip-themes config set table_prefix '${localPrefix}'`,
+            ),
+          );
+        }
+      } catch (prefixError: any) {
+        if (prefixError instanceof CancelledError) throw prefixError;
+        console.warn(
+          '[Kinsta] Remote table-prefix reconcile failed (non-fatal):',
+          prefixError?.message,
+        );
+        deps.notify(
+          'Kinsta Sync',
+          'Push done, but updating the remote table prefix failed — if the site looks empty, set $table_prefix in wp-config.php on Kinsta to match Local.',
         );
       }
 

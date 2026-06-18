@@ -13,7 +13,7 @@ export function rsyncSshContext(
 ): { localPublicPath: string; sshCommandForRsync: string; remoteHost: string } {
   return {
     localPublicPath: path.join(expandPath(site.path), 'app', 'public'),
-    sshCommandForRsync: `ssh -p ${envInfo.sshPort} -o StrictHostKeyChecking=accept-new`,
+    sshCommandForRsync: `ssh -p ${envInfo.sshPort} -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=60 -o ServerAliveCountMax=120`,
     remoteHost: `${envInfo.sshUser}@${envInfo.sshHost}`,
   };
 }
@@ -24,6 +24,13 @@ export function sshArgs(envInfo: EnvironmentInfo, remoteCmd: string): string[] {
     envInfo.sshPort,
     '-o',
     'StrictHostKeyChecking=accept-new',
+    // Keep the connection alive on long-running steps (big rsync, slow
+    // mysqldump/import) so an idle NAT/firewall can't drop the channel
+    // mid-sync: probe every 60s, give up only after 120 missed probes.
+    '-o',
+    'ServerAliveInterval=60',
+    '-o',
+    'ServerAliveCountMax=120',
     `${envInfo.sshUser}@${envInfo.sshHost}`,
     remoteCmd,
   ];
