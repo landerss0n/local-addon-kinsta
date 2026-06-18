@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import { builtinModules } from 'module';
 
 /**
  * Packaging guard for the renderer bundle.
@@ -11,17 +12,23 @@ import * as path from 'path';
  * So every bare `require("<pkg>")` left in the bundle (a webpack `external`)
  * MUST be resolvable from that directory on a CLEAN install — i.e. it must be
  * either:
- *   - a module Local's RendererAddonLoader provides on the context AND that is
- *     also resolvable as a real package from Local's runtime (react, react-dom,
- *     electron, @getflywheel/local*), or
+ *   - a module Local actually exposes to the add-on's renderer require() path.
+ *     Verified empirically (Local's local-lightning.log on a real .tgz install):
+ *     the React ecosystem only — `react`, `react-dom` — plus `electron` (always
+ *     available in the renderer). Local does NOT expose
+ *     `@getflywheel/local-components` to add-ons, so it must NOT be an external;
+ *     webpack has to bundle it.
  *   - one of our own `bundledDependencies` (shipped inside the .tgz node_modules).
  *
- * Anything else (e.g. a devDependency-only `react-router-dom`) is absent from
- * the released .tgz and throws MODULE_NOT_FOUND at load time — Local swallows
- * the throw, the add-on never registers its hooks, and no UI appears.
+ * Anything else is absent from the released .tgz and throws MODULE_NOT_FOUND at
+ * load time — Local swallows the throw (RendererAddonLoader logs it), the add-on
+ * never registers its hooks, no UI appears, and Local's shell then crashes with
+ * "Cannot read properties of undefined (reading 'toString')".
  *
- * Regression: 1.1.6 shipped `require("react-router-dom")` (devDependency only),
- * which crashed every clean install. Use context.ReactRouter instead.
+ * Regressions this guards (both surfaced as the same toString crash on clean
+ * installs): 1.1.6 shipped `require("react-router-dom")`; 1.1.7 still shipped
+ * `require("@getflywheel/local-components")`. Both are devDependency-only and
+ * unavailable on a clean install.
  */
 describe('renderer bundle packaging', () => {
   const bundlePath = path.resolve(__dirname, '../../lib/renderer/index.js');
@@ -47,15 +54,17 @@ describe('renderer bundle packaging', () => {
     const bundled: string[] = pkg.bundledDependencies ?? [];
 
     // Modules guaranteed present at runtime on a clean install:
-    //  - provided by Local's renderer host (and resolvable as real packages)
-    //  - electron (always available in the renderer)
+    //  - exposed by Local to add-ons (verified: react + react-dom only)
+    //  - electron + Node built-ins (always available in the electron-renderer)
     //  - our own bundled dependencies (shipped inside the .tgz)
+    // NOTE: @getflywheel/local-components is deliberately NOT here — Local does
+    // not expose it to add-ons, so it must be webpack-bundled, not externalized.
     const allowed = new Set<string>([
       'react',
       'react-dom',
       'electron',
-      '@getflywheel/local',
-      '@getflywheel/local-components',
+      ...builtinModules,
+      ...builtinModules.map((m) => `node:${m}`),
       ...bundled,
     ]);
 

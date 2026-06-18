@@ -30,17 +30,19 @@ module.exports = {
       },
     ],
   },
-  // NOTE: do NOT add 'react-router-dom' here. The add-on bundle is loaded by a
-  // plain Node require() from the installed add-on directory (outside Local's
-  // app.asar), so any external left in the bundle must be resolvable there on a
-  // clean install — i.e. provided by Local's loader and a real package, or one
-  // of our bundledDependencies. react-router-dom is neither (devDependency
-  // only), so we consume it via context.ReactRouter instead. See
-  // src/renderer/bundle.packaging.test.ts.
+  // Externalize ONLY what Local actually exposes to an add-on's renderer
+  // require() path. The bundle is loaded by a plain Node require() from the
+  // installed add-on dir (outside Local's app.asar), so any external left in it
+  // must resolve there on a CLEAN install. Verified via Local's log on a real
+  // .tgz install: Local exposes react + react-dom (and electron is always
+  // present), but NOT @getflywheel/local-components and NOT react-router-dom —
+  // those must be bundled (handled here for local-components, via
+  // context.ReactRouter for the router). react/react-dom stay external so
+  // Local's single React instance is used (bundling React → React error #130).
+  // @getflywheel/local is type-only in our code (erased at compile → no runtime
+  // require). See src/renderer/bundle.packaging.test.ts for the guard.
   externals: {
     react: 'react',
     'react-dom': 'react-dom',
-    '@getflywheel/local': '@getflywheel/local',
-    '@getflywheel/local-components': '@getflywheel/local-components',
   },
 };
