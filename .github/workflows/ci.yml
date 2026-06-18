@@ -28,8 +28,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test
-        run: npm test
-
+      # Build BEFORE Test: bundle.packaging.test.ts inspects the built
+      # lib/renderer/index.js (the packaging guard), which doesn't exist on a
+      # clean checkout until this step.
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm test
