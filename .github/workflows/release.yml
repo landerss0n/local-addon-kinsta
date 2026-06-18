@@ -13,6 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Full history + tags so we can read the tagged commit's message for
+          # the release notes and compute the previous tag for the changelog link.
+          fetch-depth: 0
+          fetch-tags: true
 
       - uses: actions/setup-node@v5
         with:
@@ -41,8 +46,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
-            || gh release create "$GITHUB_REF_NAME" \
-                 --title "Kinsta Sync ${GITHUB_REF_NAME#v}" \
-                 --generate-notes
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # Release notes = the tagged commit's message (our commits carry a
+            # descriptive subject + body) followed by the Full Changelog link.
+            # The message is read from git into a file (never interpolated into a
+            # shell command), so there is no injection surface.
+            notes_file="$(mktemp)"
+            git log -1 --pretty=%B "$GITHUB_REF_NAME" > "$notes_file"
+            prev_tag="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+            if [ -n "$prev_tag" ]; then
+              printf '\n**Full Changelog**: %s/%s/compare/%s...%s\n' \
+                "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$prev_tag" "$GITHUB_REF_NAME" >> "$notes_file"
+            fi
+            gh release create "$GITHUB_REF_NAME" \
+              --title "Kinsta Sync ${GITHUB_REF_NAME#v}" \
+              --notes-file "$notes_file"
+          fi
           gh release upload "$GITHUB_REF_NAME" local-addon-kinsta-*.tgz --clobber
