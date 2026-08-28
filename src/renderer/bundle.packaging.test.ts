@@ -42,7 +42,11 @@ describe('renderer bundle packaging', () => {
 
     const bundle = fs.readFileSync(bundlePath, 'utf8');
     const required = new Set<string>();
-    const re = /require\(["']([^"']+)["']\)/g;
+    // Bare `require("x")` only. A member call like `window.require("x")` is a
+    // DIFFERENT resolver: it runs against Local's renderer page inside app.asar,
+    // so it reaches Local's own node_modules rather than the add-on directory.
+    // The lookbehind keeps those out of the clean-install allow-list check.
+    const re = /(?<![.\w$])require\(["']([^"']+)["']\)/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(bundle)) !== null) {
       const id = m[1];
@@ -75,5 +79,21 @@ describe('renderer bundle packaging', () => {
     });
 
     expect(disallowed).toEqual([]);
+  });
+
+  /**
+   * local-components suffixes every CSS-module class name with its own package
+   * version (`.Spinner_nsNfA_v17-8-2`) and injects the matching stylesheet from
+   * its own package directory. Local loads the copy in its app.asar, so the
+   * document only ever has rules for the version LOCAL ships. Our webpack-bundled
+   * copy carries no stylesheet, so if the components come from the bundle their
+   * class names match nothing and every screen renders unstyled — the Local 10.1.2
+   * regression. src/renderer/localComponents.ts pulls them from Local's copy via
+   * `window.require` instead; this guards that indirection from being refactored
+   * away back into a plain bundled import.
+   */
+  it('resolves local-components from Local at runtime, not from the bundle', () => {
+    const bundle = fs.readFileSync(bundlePath, 'utf8');
+    expect(bundle).toMatch(/window\.require\(["']@getflywheel\/local-components["']\)/);
   });
 });

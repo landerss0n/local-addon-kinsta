@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { Title, PrimaryButton, TextButton, Spinner } from '@getflywheel/local-components';
+import { Title, PrimaryButton, TextButton, Spinner } from './localComponents';
 import { dispatchKinstaAction } from './KinstaSitePanel';
 import KinstaIcon from './KinstaIcon';
 import { envLabel } from './pushHelpers';

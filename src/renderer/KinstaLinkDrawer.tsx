@@ -1,12 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import {
-  PrimaryButton,
-  TextButton,
-  Spinner,
-  Title,
-  InputSearch,
-} from '@getflywheel/local-components';
+import { PrimaryButton, TextButton, Spinner, Title, InputSearch } from './localComponents';
 import KinstaIcon from './KinstaIcon';
 import { STATUS, tint } from './colors';
 

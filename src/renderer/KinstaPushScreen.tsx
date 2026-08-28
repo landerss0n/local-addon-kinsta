@@ -15,7 +15,7 @@ import {
   ConnectPushIcon,
   FileAddedIcon,
   FileRightArrowIcon,
-} from '@getflywheel/local-components';
+} from './localComponents';
 import KinstaIcon from './KinstaIcon';
 import {
   buildEnvInfo,

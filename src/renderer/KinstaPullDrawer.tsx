@@ -8,7 +8,7 @@ import {
   ProgressBar,
   Spinner,
   Title,
-} from '@getflywheel/local-components';
+} from './localComponents';
 import KinstaIcon from './KinstaIcon';
 import { buildEnvInfo, envLabel } from './pushHelpers';
 import { STATUS, tint } from './colors';
