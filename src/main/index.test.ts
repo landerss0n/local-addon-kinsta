@@ -541,6 +541,49 @@ describe('EXCLUDE_PATTERNS', () => {
     expect(EXCLUDE_PATTERNS.some((p) => p.includes('uploads'))).toBe(false);
   });
 
+  /**
+   * rsync matches a slash-less --exclude pattern against a path's basename at
+   * any depth, and `*` never crosses a `/`. This mirrors just enough of that to
+   * assert on REAL filenames rather than on the pattern strings themselves —
+   * a pattern list can look right and still miss the file it was added for.
+   */
+  const isExcluded = (relPath: string): boolean => {
+    const basename = relPath.split('/').pop() ?? relPath;
+    return EXCLUDE_PATTERNS.some((pattern) => {
+      const target = pattern.includes('/') ? relPath : basename;
+      const source = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*');
+      return new RegExp(`^${source}$`).test(target);
+    });
+  };
+
+  it('excludes every copy of wp-config, not just wp-config.php itself', () => {
+    // A backup carries the same DB credentials and salts as the original, so it
+    // is exactly as host-specific — syncing one either way leaks them across
+    // environments. wp-config-sample.php is WP core boilerplate and version-bound.
+    for (const filename of [
+      'wp-config.php',
+      'wp-config.php.bak-claude',
+      'wp-config.php.bak',
+      'wp-config.php.save',
+      'wp-config.php.orig',
+      'wp-config.php~',
+      'wp-config-sample.php',
+      'wp-config-backup.php',
+    ]) {
+      expect(isExcluded(filename)).toBe(true);
+    }
+  });
+
+  it('does not let the wp-config patterns swallow unrelated files', () => {
+    for (const filename of [
+      'wp-login.php',
+      'wp-settings.php',
+      'wp-content/themes/acme/config.php',
+    ]) {
+      expect(isExcluded(filename)).toBe(false);
+    }
+  });
+
   it('does NOT blanket-exclude cache/ (would strip Sage/Acorn storage/framework/cache)', () => {
     // A bare 'cache/' matches at any depth and breaks Roots/Acorn themes; the
     // page-cache exclude must be anchored to wp-content/cache.

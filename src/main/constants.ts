@@ -28,6 +28,14 @@ export const EXCLUDE_PATTERNS = [
   '.vscode/',
   'Thumbs.db',
   'wp-config.php',
+  // Every copy of wp-config carries the same DB credentials and salts as the
+  // original, so it is exactly as host-specific — syncing one either way leaks
+  // them across environments. Covers .bak/.save/.orig/.bak-<tool> suffixes,
+  // wp-config-backup.php style renames, editor tilde files, and WP core's
+  // version-bound wp-config-sample.php.
+  'wp-config.php.*',
+  'wp-config-*.php',
+  'wp-config.php~',
   '.htaccess',
   'php.ini',
   '.user.ini',
