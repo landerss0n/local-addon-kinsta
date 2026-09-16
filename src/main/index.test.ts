@@ -584,6 +584,33 @@ describe('EXCLUDE_PATTERNS', () => {
     }
   });
 
+  it('excludes backup copies of any file, at any depth', () => {
+    // Editor/tool safety copies are never part of a site; a stale one next to
+    // an mu-plugin is dead code shipped to production.
+    for (const filename of [
+      'wp-content/mu-plugins/bernsborg-site.php.bak-20260828-225646',
+      'wp-content/mu-plugins/bernsborg-site.php.bak-claude',
+      'wp-content/themes/acme/functions.php.bak',
+      'wp-content/themes/acme/style.css.bak.2',
+      'wp-content/plugins/acme/acme.php.orig',
+      'wp-content/themes/acme/functions.php~',
+      '.htaccess.bak',
+    ]) {
+      expect(isExcluded(filename)).toBe(true);
+    }
+  });
+
+  it('does not let the backup patterns swallow files that merely contain "bak"', () => {
+    for (const filename of [
+      'wp-content/plugins/backup-plugin/backup.php',
+      'wp-content/themes/acme/bakery.php',
+      'wp-content/uploads/2026/09/bak.jpg',
+      'wp-content/themes/acme/original.css',
+    ]) {
+      expect(isExcluded(filename)).toBe(false);
+    }
+  });
+
   it('does NOT blanket-exclude cache/ (would strip Sage/Acorn storage/framework/cache)', () => {
     // A bare 'cache/' matches at any depth and breaks Roots/Acorn themes; the
     // page-cache exclude must be anchored to wp-content/cache.

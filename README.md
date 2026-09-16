@@ -79,7 +79,7 @@ Sites are linked at the _site_ level, so you can sync against Production one tim
 
 **Push** (Local → Kinsta): opens a fullscreen **preview** — a dry-run diff of every file that would be added, updated or deleted on the server. Pick the environment, what to include (database / uploads / native Kinsta backup) and untick any files or deletions you don't want, then push: confirmation dialog for Production → _(optional, default on)_ create a native Kinsta backup → back up the remote database to `~/kinsta-sync-pre-push-backup.sql` on the server → rsync exactly the files you selected → delete only the deletions you ticked (nothing is deleted blindly) → export the Local database → import on Kinsta → search-replace → clear Kinsta page/edge/CDN caches.
 
-Excluded from file sync: `.git`, `node_modules`, caches, SQL dumps, `wp-config.php`, `.htaccess`, Kinsta's mu-plugins and other host-specific files.
+Excluded from file sync: `.git`, `node_modules`, caches, SQL dumps, `wp-config.php` (and every copy of it), `.htaccess`, Kinsta's mu-plugins and other host-specific files, plus backup copies of any file (`*.bak`, `*.bak-*`, `*.orig`, `*~`).
 
 ### Safety nets
 
