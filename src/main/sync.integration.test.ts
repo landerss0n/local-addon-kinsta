@@ -82,6 +82,9 @@ interface FakeRunnerConfig {
   // SQL written to any stdoutFile (e.g. the local mysqldump on push) instead of
   // filler bytes — lets a test assert transforms applied to the dump.
   pushDumpSql?: string;
+  // SQL materialized at the local destination of an scp *download* (the remote
+  // dump on pull) — lets a test assert transforms applied before the import.
+  pullDumpSql?: string;
 }
 
 interface RecordedCall {
@@ -96,17 +99,30 @@ function makeFakeRunner(cfg: FakeRunnerConfig = {}) {
   // Records the on-disk content of each scp source at upload time — so a test
   // can assert what would actually land on Kinsta (after any local transform).
   const uploads: { src: string; content: string }[] = [];
+  // Records the content piped into each `mysql` import (stdinFile) at import
+  // time — what Local's MySQL would actually receive.
+  const imports: { src: string; content: string }[] = [];
   const run = async (sync: ActiveSync, cmd: string, args: string[], opts: RunOptions = {}) => {
     // Faithful to runCommand's contract: a cancelled sync rejects everything.
     if (sync.cancelled) throw new CancelledError();
     const step = describeStep(cmd, args, opts);
     calls.push({ step, cmd, args, opts });
 
-    // Capture what scp would upload (source is the second-to-last arg).
+    // Capture what scp would upload (source is the second-to-last arg), or
+    // materialize a download (destination is the last arg, a local path).
     if (step === 'scp') {
       const src = args[args.length - 2];
+      const dest = args[args.length - 1];
       try {
         uploads.push({ src, content: fs.readFileSync(src, 'utf8') });
+      } catch {}
+      if (!dest.includes(':')) {
+        fs.writeFileSync(dest, cfg.pullDumpSql ?? 'x'.repeat(500));
+      }
+    }
+    if (step === 'mysql-import' && opts.stdinFile) {
+      try {
+        imports.push({ src: opts.stdinFile, content: fs.readFileSync(opts.stdinFile, 'utf8') });
       } catch {}
     }
 
@@ -141,7 +157,7 @@ function makeFakeRunner(cfg: FakeRunnerConfig = {}) {
     }
     return { code: 0, stderr: '' };
   };
-  return { run, calls, uploads };
+  return { run, calls, uploads, imports };
 }
 
 const steps = (calls: RecordedCall[]) => calls.map((c) => c.step);
@@ -323,6 +339,24 @@ describe('executePull', () => {
     expect(wpConfig).toContain("define('DB_HOST', 'localhost')");
     expect(wpConfig).not.toContain(socketPath);
     expect(deps.activeSyncs.size).toBe(0); // unregistered in finally
+  });
+
+  it('downgrades MariaDB 11.4 collations in the downloaded dump before importing (MySQL 8)', async () => {
+    // Kinsta's MariaDB 11.4+ emits utf8mb4_uca1400_* collations Local's MySQL 8
+    // can't import ("Unknown collation: 'utf8mb4_uca1400_ai_ci'").
+    const runner = makeFakeRunner({
+      pullDumpSql:
+        'CREATE TABLE `wp_posts` (`id` bigint) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;\n',
+    });
+    const { deps } = makeDeps({ runner });
+
+    const result = await executePull(pullParams(), deps);
+    expect(result.success).toBe(true);
+
+    const imported = runner.imports.find((i) => i.src.endsWith('-remote.sql'));
+    expect(imported).toBeDefined();
+    expect(imported!.content).toContain('utf8mb4_unicode_520_ci');
+    expect(imported!.content).not.toContain('utf8mb4_uca1400_ai_ci');
   });
 
   it('adopts the remote table prefix and drops stale local-prefix tables', async () => {

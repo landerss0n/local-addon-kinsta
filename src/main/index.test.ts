@@ -27,6 +27,7 @@ import {
   normalizeTablePrefix,
   rsyncSshContext,
   downgradeMySQL8Collations,
+  downgradeMariaDBCollations,
 } from './index';
 
 const env = (overrides: Partial<EnvironmentInfo> = {}): EnvironmentInfo => ({
@@ -515,6 +516,47 @@ describe('downgradeMySQL8Collations', () => {
   it('leaves already-compatible collations untouched', () => {
     const sql = 'COLLATE=utf8mb4_unicode_ci ... COLLATE utf8mb4_general_ci';
     expect(downgradeMySQL8Collations(sql)).toBe(sql);
+  });
+});
+
+describe('downgradeMariaDBCollations', () => {
+  // The mirror image of the push case: Kinsta's MariaDB 11.4+ defaults utf8mb4
+  // to utf8mb4_uca1400_*, which Local's MySQL 8 doesn't know → the pull import
+  // fails with "Unknown collation: 'utf8mb4_uca1400_ai_ci'".
+  it('rewrites the MariaDB 11.4 default collation in CREATE TABLE (COLLATE=)', () => {
+    const sql =
+      'CREATE TABLE `wp_posts` (...) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;';
+    expect(downgradeMariaDBCollations(sql)).toBe(
+      'CREATE TABLE `wp_posts` (...) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;',
+    );
+  });
+
+  it('rewrites the column-level form (COLLATE <name>)', () => {
+    const sql = '`name` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_ci NOT NULL';
+    expect(downgradeMariaDBCollations(sql)).toBe(
+      '`name` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NOT NULL',
+    );
+  });
+
+  it('covers the whole utf8mb4_uca1400_* family (accent/case-sensitive, nopad)', () => {
+    expect(downgradeMariaDBCollations('COLLATE=utf8mb4_uca1400_as_cs')).toBe(
+      'COLLATE=utf8mb4_unicode_520_ci',
+    );
+    expect(downgradeMariaDBCollations('COLLATE=utf8mb4_uca1400_nopad_ai_ci')).toBe(
+      'COLLATE=utf8mb4_unicode_520_ci',
+    );
+  });
+
+  it('rewrites every occurrence', () => {
+    const sql = 'a utf8mb4_uca1400_ai_ci b utf8mb4_uca1400_ai_ci';
+    expect(downgradeMariaDBCollations(sql)).toBe(
+      'a utf8mb4_unicode_520_ci b utf8mb4_unicode_520_ci',
+    );
+  });
+
+  it('leaves already-compatible collations untouched', () => {
+    const sql = 'COLLATE=utf8mb4_unicode_ci ... COLLATE utf8mb4_unicode_520_ci';
+    expect(downgradeMariaDBCollations(sql)).toBe(sql);
   });
 });
 

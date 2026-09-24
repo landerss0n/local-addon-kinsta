@@ -11,6 +11,7 @@ import {
   setTablePrefix,
   normalizeTablePrefix,
   downgradeMySQL8Collations,
+  downgradeMariaDBCollations,
 } from './validators';
 import {
   sshArgs,
@@ -247,6 +248,14 @@ export async function executePull(params: SyncParams, deps: PullPushDeps): Promi
         `${remoteHost}:${remoteDbPath}`,
         dbDumpPath,
       ]);
+
+      // Kinsta's MariaDB 11.4+ → the dump carries utf8mb4_uca1400_* collations
+      // that Local's MySQL 8 can't import ("Unknown collation"). Rewrite them in
+      // place before the import. No-op for dumps without them.
+      dfs.writeFileSync(
+        dbDumpPath,
+        downgradeMariaDBCollations(dfs.readFileSync(dbDumpPath, 'utf8')),
+      );
 
       sendProgress({
         stage: 'database',

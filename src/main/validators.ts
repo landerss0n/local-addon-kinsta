@@ -109,6 +109,17 @@ export function downgradeMySQL8Collations(sql: string): string {
   return sql.replace(/utf8mb4_0900_\w+/g, 'utf8mb4_unicode_520_ci');
 }
 
+// The mirror image for pull: Kinsta's MariaDB 11.4+ defaults utf8mb4 to the
+// `utf8mb4_uca1400_*` family (ai_ci, as_cs, nopad_…), which Local's MySQL 8
+// doesn't know → the pull import fails with "Unknown collation:
+// 'utf8mb4_uca1400_ai_ci'". Rewrite the family to utf8mb4_unicode_520_ci (same
+// target as above, understood by both engines) before piping the downloaded
+// dump into Local's MySQL. Covers both the `COLLATE=<name>` and `COLLATE <name>`
+// forms; no-op for dumps from older MariaDB.
+export function downgradeMariaDBCollations(sql: string): string {
+  return sql.replace(/utf8mb4_uca1400_\w+/g, 'utf8mb4_unicode_520_ci');
+}
+
 // `wp config get table_prefix` returns the bare value plus a trailing newline.
 // Validate strictly before it reaches wp-config.php or a DROP TABLE loop — a
 // WordPress prefix is letters, digits and underscores only.

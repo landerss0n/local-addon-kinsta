@@ -221,7 +221,7 @@ The link drawer includes:
 3. Backup local DB to tmp (safety net)
 4. Export database on Kinsta via SSH + WP-CLI
 5. Download SQL dump via SCP
-6. Import to Local's MySQL via socket (stdin pipe)
+6. `downgradeMariaDBCollations` rewrites `utf8mb4_uca1400_*` → `utf8mb4_unicode_520_ci` in the downloaded dump (Kinsta's MariaDB 11.4+ defaults to uca1400, which Local's MySQL 8 rejects with `Unknown collation`), then import to Local's MySQL via socket (stdin pipe)
 7. Run WP-CLI search-replace ×3 passes (https/http/protocol-relative; modifies wp-config.php temporarily for socket)
 8. Reconcile table prefix (see below) — adopt production's prefix locally + drop stale old-prefix tables
 9. Clear compiled Sage/Acorn caches (see below) — `clearCompiledFrameworkCaches`, runs for every pull
@@ -233,7 +233,7 @@ The link drawer includes:
 2. Pre-flight: site running? (socket check)
 3. Backup remote DB to `~/kinsta-sync-pre-push-backup.sql` on Kinsta (`wp --skip-plugins --skip-themes db export` — a broken/heavy plugin must not break the rollback net)
 4. rsync files to Kinsta (with --delete, real progress)
-5. Export Local database via mysqldump (stdout pipe), then `downgradeMySQL8Collations` rewrites `utf8mb4_0900_*` → `utf8mb4_unicode_520_ci` in the dump (Local ships MySQL 8; Kinsta runs MariaDB, which rejects 0900 collations)
+5. Export Local database via mysqldump (stdout pipe), then `downgradeMySQL8Collations` rewrites `utf8mb4_0900_*` → `utf8mb4_unicode_520_ci` in the dump (Local ships MySQL 8; Kinsta runs MariaDB, which rejects 0900 collations). Pull has the symmetric `downgradeMariaDBCollations` for MariaDB's `uca1400` family — both helpers live in `validators.ts` and target the same collation, understood by both engines
 6. Upload SQL dump via SCP
 7. Import on Kinsta via SSH + WP-CLI
 8. Run search-replace ×3 passes on Kinsta
