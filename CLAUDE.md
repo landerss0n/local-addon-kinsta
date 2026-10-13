@@ -233,7 +233,7 @@ The link drawer includes:
 2. Pre-flight: site running? (socket check)
 3. Backup remote DB to `~/kinsta-sync-pre-push-backup.sql` on Kinsta (`wp --skip-plugins --skip-themes db export` — a broken/heavy plugin must not break the rollback net)
 4. rsync files to Kinsta (with --delete, real progress)
-5. Export Local database via mysqldump (stdout pipe), then `downgradeMySQL8Collations` rewrites `utf8mb4_0900_*` → `utf8mb4_unicode_520_ci` in the dump (Local ships MySQL 8; Kinsta runs MariaDB, which rejects 0900 collations). Pull has the symmetric `downgradeMariaDBCollations` for MariaDB's `uca1400` family — both helpers live in `validators.ts` and target the same collation, understood by both engines
+5. Export Local database via mysqldump (stdout pipe), then `downgradeMySQL8Collations` rewrites `utf8mb4_0900_*` → `utf8mb4_unicode_520_ci` in the dump (Local ships MySQL 8; Kinsta runs MariaDB, which rejects 0900 collations). Pull has the symmetric `downgradeMariaDBCollations` for MariaDB's `uca1400` family — both helpers live in `validators.ts` and target the same collation, understood by both engines. Both rewrites read and write the dump as `latin1`, never `utf8`: latin1 maps bytes 1:1, so binary column data (Wordfence's varbinary IPs) survives; a utf8 round trip turns it into U+FFFD and the import dies on `Duplicate entry … PRIMARY`
 6. Upload SQL dump via SCP
 7. Import on Kinsta via SSH + WP-CLI
 8. Run search-replace ×3 passes on Kinsta

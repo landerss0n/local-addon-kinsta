@@ -81,10 +81,10 @@ interface FakeRunnerConfig {
   localTables?: string[];
   // SQL written to any stdoutFile (e.g. the local mysqldump on push) instead of
   // filler bytes — lets a test assert transforms applied to the dump.
-  pushDumpSql?: string;
+  pushDumpSql?: string | Buffer;
   // SQL materialized at the local destination of an scp *download* (the remote
   // dump on pull) — lets a test assert transforms applied before the import.
-  pullDumpSql?: string;
+  pullDumpSql?: string | Buffer;
 }
 
 interface RecordedCall {
@@ -98,10 +98,10 @@ function makeFakeRunner(cfg: FakeRunnerConfig = {}) {
   const calls: RecordedCall[] = [];
   // Records the on-disk content of each scp source at upload time — so a test
   // can assert what would actually land on Kinsta (after any local transform).
-  const uploads: { src: string; content: string }[] = [];
+  const uploads: { src: string; content: string; bytes: Buffer }[] = [];
   // Records the content piped into each `mysql` import (stdinFile) at import
   // time — what Local's MySQL would actually receive.
-  const imports: { src: string; content: string }[] = [];
+  const imports: { src: string; content: string; bytes: Buffer }[] = [];
   const run = async (sync: ActiveSync, cmd: string, args: string[], opts: RunOptions = {}) => {
     // Faithful to runCommand's contract: a cancelled sync rejects everything.
     if (sync.cancelled) throw new CancelledError();
@@ -114,7 +114,8 @@ function makeFakeRunner(cfg: FakeRunnerConfig = {}) {
       const src = args[args.length - 2];
       const dest = args[args.length - 1];
       try {
-        uploads.push({ src, content: fs.readFileSync(src, 'utf8') });
+        const bytes = fs.readFileSync(src);
+        uploads.push({ src, content: bytes.toString('utf8'), bytes });
       } catch {}
       if (!dest.includes(':')) {
         fs.writeFileSync(dest, cfg.pullDumpSql ?? 'x'.repeat(500));
@@ -122,7 +123,8 @@ function makeFakeRunner(cfg: FakeRunnerConfig = {}) {
     }
     if (step === 'mysql-import' && opts.stdinFile) {
       try {
-        imports.push({ src: opts.stdinFile, content: fs.readFileSync(opts.stdinFile, 'utf8') });
+        const bytes = fs.readFileSync(opts.stdinFile);
+        imports.push({ src: opts.stdinFile, content: bytes.toString('utf8'), bytes });
       } catch {}
     }
 
@@ -357,6 +359,30 @@ describe('executePull', () => {
     expect(imported).toBeDefined();
     expect(imported!.content).toContain('utf8mb4_unicode_520_ci');
     expect(imported!.content).not.toContain('utf8mb4_uca1400_ai_ci');
+  });
+
+  it('keeps binary column bytes intact through the collation rewrite on pull', async () => {
+    // Wordfence stores IPs as varbinary(16); mysqldump writes them as raw bytes
+    // that are not valid UTF-8. Decoding the dump as utf8 turned them into
+    // U+FFFD, collapsing distinct IPs into one → "Duplicate entry ... PRIMARY".
+    const binaryIp = Buffer.from([0x00, 0x00, 0xff, 0xff, 0xc0, 0xa8, 0x80, 0x9f]);
+    const dump = Buffer.concat([
+      Buffer.from(
+        "CREATE TABLE `wp_wfblockediplog` (`IP` varbinary(16)) COLLATE=utf8mb4_uca1400_ai_ci;\nINSERT INTO `wp_wfblockediplog` VALUES ('",
+      ),
+      binaryIp,
+      Buffer.from("'),('åäö');\n"),
+    ]);
+    const runner = makeFakeRunner({ pullDumpSql: dump });
+    const { deps } = makeDeps({ runner });
+
+    const result = await executePull(pullParams(), deps);
+    expect(result.success).toBe(true);
+
+    const imported = runner.imports.find((i) => i.src.endsWith('-remote.sql'))!;
+    expect(imported.bytes.includes(binaryIp)).toBe(true);
+    expect(imported.content).toContain('utf8mb4_unicode_520_ci');
+    expect(imported.content).toContain('åäö');
   });
 
   it('adopts the remote table prefix and drops stale local-prefix tables', async () => {
@@ -632,6 +658,28 @@ describe('executePush', () => {
     expect(upload).toBeDefined();
     expect(upload!.content).toContain('utf8mb4_unicode_520_ci');
     expect(upload!.content).not.toContain('utf8mb4_0900_ai_ci');
+  });
+
+  it('keeps binary column bytes intact through the collation rewrite on push', async () => {
+    const binaryIp = Buffer.from([0x00, 0x00, 0xff, 0xff, 0xc0, 0xa8, 0x80, 0x9f]);
+    const dump = Buffer.concat([
+      Buffer.from(
+        "CREATE TABLE `t` (`IP` varbinary(16)) COLLATE=utf8mb4_0900_ai_ci;\nINSERT INTO `t` VALUES ('",
+      ),
+      binaryIp,
+      Buffer.from("'),('åäö');\n"),
+      Buffer.alloc(200, 0x20),
+    ]);
+    const runner = makeFakeRunner({ pushDumpSql: dump });
+    const { deps } = makeDeps({ runner });
+
+    const result = await executePush(pushParams(), deps);
+    expect(result.success).toBe(true);
+
+    const upload = runner.uploads.find((u) => u.src.endsWith('-local.sql'))!;
+    expect(upload.bytes.includes(binaryIp)).toBe(true);
+    expect(upload.content).toContain('utf8mb4_unicode_520_ci');
+    expect(upload.content).toContain('åäö');
   });
 
   it('reconciles the remote table_prefix to match Local when they differ', async () => {

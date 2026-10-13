@@ -252,9 +252,13 @@ export async function executePull(params: SyncParams, deps: PullPushDeps): Promi
       // Kinsta's MariaDB 11.4+ → the dump carries utf8mb4_uca1400_* collations
       // that Local's MySQL 8 can't import ("Unknown collation"). Rewrite them in
       // place before the import. No-op for dumps without them.
+      // latin1 maps every byte 1:1, so binary column data (e.g. Wordfence's
+      // varbinary IPs) survives the round trip; 'utf8' turned invalid
+      // sequences into U+FFFD and broke the import with duplicate keys.
       dfs.writeFileSync(
         dbDumpPath,
-        downgradeMariaDBCollations(dfs.readFileSync(dbDumpPath, 'utf8')),
+        downgradeMariaDBCollations(dfs.readFileSync(dbDumpPath, 'latin1')),
+        'latin1',
       );
 
       sendProgress({
@@ -760,9 +764,13 @@ export async function executePush(params: SyncParams, deps: PullPushDeps): Promi
       // Local ships MySQL 8.x → the dump carries utf8mb4_0900_* collations that
       // Kinsta's MariaDB can't import ("Unknown collation"). Rewrite them in
       // place before upload so the import succeeds. No-op for dumps without them.
+      // latin1 maps every byte 1:1, so binary column data (e.g. Wordfence's
+      // varbinary IPs) survives the round trip; 'utf8' turned invalid
+      // sequences into U+FFFD and broke the import with duplicate keys.
       dfs.writeFileSync(
         dbDumpPath,
-        downgradeMySQL8Collations(dfs.readFileSync(dbDumpPath, 'utf8')),
+        downgradeMySQL8Collations(dfs.readFileSync(dbDumpPath, 'latin1')),
+        'latin1',
       );
 
       sendProgress({ stage: 'database', progress: 65, message: 'Uploading database...' });
